@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FilterPanel } from '../../../components/common/Card.jsx'
 import { Field, Input, Select } from '../../../components/common/FormField.jsx'
+import { useAreaOptions } from '../../../hooks/useOptions.js'
 
 const STATUS_OPTIONS = [
   { value: 'active', label: '运行中' },
@@ -18,6 +19,10 @@ const TYPE_OPTIONS = [
 
 export default function StationFilters({ value, areas = [], loading, onSubmit, onReset }) {
   const [draft, setDraft] = useState(value)
+  const { data: areaData } = useAreaOptions()
+  const areaOptions = areas.length
+    ? areas.map((item) => ({ value: String(item.id), label: item.name }))
+    : (areaData?.items ?? []).map((item) => ({ value: String(item.id), label: item.name }))
 
   useEffect(() => {
     setDraft(value)
@@ -30,7 +35,7 @@ export default function StationFilters({ value, areas = [], loading, onSubmit, o
       loading={loading}
       onSearch={() => onSubmit(draft)}
       onReset={() => {
-        setDraft({ keyword: '', area: '', status: '', station_type: '' })
+        setDraft({ keyword: '', area_id: '', status: '', station_type: '' })
         onReset()
       }}
     >
@@ -42,12 +47,12 @@ export default function StationFilters({ value, areas = [], loading, onSubmit, o
           onKeyDown={(event) => event.key === 'Enter' && onSubmit(draft)}
         />
       </Field>
-      <Field label="所属区域">
+      <Field label="所属片区">
         <Select
-          value={draft.area || ''}
-          onChange={update('area')}
-          placeholder="全部区域"
-          options={areas.map((area) => ({ value: area, label: area }))}
+          value={draft.area_id || ''}
+          onChange={update('area_id')}
+          placeholder="全部片区"
+          options={areaOptions}
         />
       </Field>
       <Field label="监测点类型">

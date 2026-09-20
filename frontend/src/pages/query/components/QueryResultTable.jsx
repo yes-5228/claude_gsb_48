@@ -7,7 +7,7 @@ export default function QueryResultTable({ rows, loading }) {
   const columns = [
     { key: 'measured_at', title: '监测时间', className: 'cell-nowrap', render: (row) => formatDateTime(row.measured_at) },
     { key: 'station', title: '监测点', render: (row) => `${row.station?.code || ''} ${row.station?.name || ''}` },
-    { key: 'station_area', title: '区域', render: (row) => row.station?.area || '-' },
+    { key: 'station_area', title: '所属片区', render: (row) => row.station?.area || '-' },
     { key: 'pollutant_label', title: '因子', className: 'cell-nowrap' },
     { key: 'period_label', title: '周期', className: 'cell-nowrap' },
     {

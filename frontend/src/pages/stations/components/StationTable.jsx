@@ -16,7 +16,7 @@ export default function StationTable({ rows, loading, onDetail, onEdit, onDelete
         </div>
       )
     },
-    { key: 'area', title: '所属区域', className: 'cell-nowrap' },
+    { key: 'area', title: '所属片区', className: 'cell-nowrap' },
     { key: 'station_type_label', title: '类型', className: 'cell-nowrap' },
     {
       key: 'status',

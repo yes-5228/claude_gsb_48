@@ -2,7 +2,7 @@
 from flask import Blueprint, current_app, request
 
 from ..domain.constants import DATA_SOURCE_LABELS, PERIOD_LABELS
-from ..services import measurement_service, query_service, station_service
+from ..services import area_service, measurement_service, query_service, station_service
 from ..utils.pagination import paginate_query
 from ..utils.validation import Validator
 from .helpers import json_payload, list_payload
@@ -71,10 +71,20 @@ def export_measurements():
 
     query, _ = query_service.measurement_query(request.args)
     rows = query.limit(current_app.config["MAX_EXPORT_ROWS"]).all()
+    resolver = area_service.historical_area_resolver(rows)
+    area_context = area_service.build_export_context(rows, resolver)
+
+    def area_name(row):
+        area_id = resolver(row)
+        return area_context.get(area_id, {}).get("name") or (
+            row.station.area if row.station else ""
+        )
+
     columns = [
         ("站点编码", lambda row: row.station.code if row.station else ""),
         ("站点名称", lambda row: row.station.name if row.station else ""),
-        ("所属区域", lambda row: row.station.area if row.station else ""),
+        ("所属片区", area_name),
+        ("责任人", lambda row: area_context.get(resolver(row), {}).get("persons", "")),
         ("监测因子", lambda row: row.pollutant_label()),
         ("数据周期", lambda row: PERIOD_LABELS.get(row.period, row.period)),
         ("监测值", "value"),

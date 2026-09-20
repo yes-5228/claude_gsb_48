@@ -23,6 +23,23 @@ export default function StationDetailDrawer({ stationId, onClose, onEdit }) {
     { key: 'max_value', title: '最大值', align: 'right', render: (row) => formatNumber(row.max_value) }
   ]
 
+  const assignmentColumns = [
+    { key: 'area_name', title: '所属片区', render: (row) => <span className="strong">{row.area_name}</span> },
+    {
+      key: 'effective_from',
+      title: '生效开始',
+      render: (row) => formatDateTime(row.effective_from)
+    },
+    {
+      key: 'effective_end',
+      title: '生效结束',
+      render: (row) =>
+        row.is_current ? <Tag tone="success">当前归属</Tag> : formatDateTime(row.effective_end)
+    },
+    { key: 'change_reason', title: '变更原因', render: (row) => row.change_reason || '-' },
+    { key: 'changed_by', title: '操作人', render: (row) => row.changed_by || '-' }
+  ]
+
   return (
     <Modal
       open={open}
@@ -54,8 +71,8 @@ export default function StationDetailDrawer({ stationId, onClose, onEdit }) {
           <dl className="kv">
             <dt>监测点编码</dt>
             <dd className="mono">{data.code}</dd>
-            <dt>所属区域</dt>
-            <dd>{data.area}</dd>
+            <dt>所属片区</dt>
+            <dd>{data.area || '-'}</dd>
             <dt>详细地址</dt>
             <dd>{data.address || '-'}</dd>
             <dt>经纬度</dt>
@@ -93,6 +110,18 @@ export default function StationDetailDrawer({ stationId, onClose, onEdit }) {
               <span className="hint">限值参考 GB 3095-2012 二级标准</span>
             </div>
             <DataTable columns={columns} rows={stats.pollutants || []} emptyText="该监测点暂无监测数据" />
+          </div>
+
+          <div className="card">
+            <div className="card-header">
+              <h3>片区归属历史</h3>
+              <span className="hint">归属或责任人变动后, 历史数据按当时片区汇总</span>
+            </div>
+            <DataTable
+              columns={assignmentColumns}
+              rows={data.assignments || []}
+              emptyText="暂无归属记录"
+            />
           </div>
         </div>
       ) : null}

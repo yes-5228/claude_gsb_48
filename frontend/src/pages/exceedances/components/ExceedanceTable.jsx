@@ -23,6 +23,7 @@ export default function ExceedanceTable({
         </div>
       )
     },
+    { key: 'area_name', title: '所属片区', className: 'cell-nowrap', render: (row) => row.area_name || '-' },
     { key: 'pollutant_label', title: '因子', className: 'cell-nowrap' },
     { key: 'period_label', title: '周期', className: 'cell-nowrap' },
     {

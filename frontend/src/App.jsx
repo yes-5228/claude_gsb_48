@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import AppLayout from './components/layout/AppLayout.jsx'
 import { ToastProvider } from './components/common/ToastProvider.jsx'
+import AreasPage from './pages/areas/AreasPage.jsx'
 import OverviewPage from './pages/overview/OverviewPage.jsx'
 import StationsPage from './pages/stations/StationsPage.jsx'
 import MeasurementsPage from './pages/measurements/MeasurementsPage.jsx'
@@ -15,6 +16,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/overview" replace />} />
             <Route path="/overview" element={<OverviewPage />} />
+            <Route path="/areas" element={<AreasPage />} />
             <Route path="/stations" element={<StationsPage />} />
             <Route path="/measurements" element={<MeasurementsPage />} />
             <Route path="/exceedances" element={<ExceedancesPage />} />

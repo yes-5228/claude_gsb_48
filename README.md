@@ -8,16 +8,18 @@
 
 | 模块 | 路由 | 主要能力 |
 | --- | --- | --- |
-| 运行概览 | `/overview` | 监测点规模、数据总量、超标与待标注统计、近 7 日数据量趋势、待办超标列表 |
-| 监测点台账 | `/stations` | 台账增删改查、区域/类型/状态筛选、点位详情与分因子统计、级联清理关联数据 |
-| 监测数据录入 | `/measurements` | 按“监测点 + 时刻 + 周期”成组录入多因子浓度、超标校验预览、重复数据覆盖、录入结果回执 |
-| 超标记录标注 | `/exceedances` | 超标自动建单、单条/批量标注(确认 / 忽略 / 重置)、等级人工修正、标注留痕与统计 |
-| 数据查询 | `/query` | 多条件组合检索、聚合统计(按因子/站点/区域/日/月等)、分页浏览、CSV 导出 |
+| 运行概览 | `/overview` | 监测点规模、数据总量、超标与待标注统计、近 7 日数据量趋势、**片区超标待办排名**、待办超标列表 |
+| 片区与责任人 | `/areas` | 片区/责任人台账、片区挂多个点位与负责人、批量划转与任职管理、片区统计排名、归属与任职历史留痕 |
+| 监测点台账 | `/stations` | 台账增删改查、**按片区筛选**、点位详情(含分因子统计与**片区归属历史**)、级联清理关联数据 |
+| 监测数据录入 | `/measurements` | 按“监测点 + 时刻 + 周期”成组录入多因子浓度、超标校验预览、重复数据覆盖、录入结果回执、**按片区筛选/导出** |
+| 超标记录标注 | `/exceedances` | 超标自动建单、单条/批量标注(确认 / 忽略 / 重置)、等级人工修正、标注留痕、**按片区/责任人筛选、片区待办下钻** |
+| 数据查询 | `/query` | 多条件组合检索(**含片区/责任人**)、聚合统计(按因子/**片区(历史归属)**/站点/日/月等)、分页浏览、CSV 导出(**含片区与责任人列**) |
 
 设计要点:
 
 - **超标自动判定**: 数据写入时即按“因子 + 数据周期”取用限值, 计算超标倍数并分级, 同步生成待标注超标记录; 修正数据后超标记录自动更新或撤销。
-- **业务规则集中在后端**: 限值与分级规则位于 `backend/app/domain/`, 前端仅做展示与前置校验, 避免规则分叉。
+- **片区时间分段归属 (SCD-2)**: 监测点归属片区、责任人在片区任职均按“生效起止时间段”存储。划转/卸任时旧记录写入 `effective_end` 与变更原因, 再开新段, 历史永不覆盖; 查询、统计排名与导出按**数据产生时**的片区归属汇总(责任人按当前任职展开), 归属调整不会改写历史结论。
+- **业务规则集中在后端**: 限值、分级与片区归属解析位于 `backend/app/domain/`、`backend/app/services/area_service.py`, 前端仅做展示与前置校验, 避免规则分叉。
 - **模块化组织**: 后端按 `api / services / models / domain / utils` 分层; 前端每个业务模块独占目录, 公共能力沉淀在 `components/`、`hooks/`、`api/`。
 
 ## 技术栈
@@ -80,7 +82,8 @@ docker compose up -d --build
 | 前端 | http://localhost:8080 | Nginx 托管, `/api` 反向代理到后端 |
 | 后端 | http://localhost:5000/api/meta/health | 健康检查 |
 
-首次启动会自动建表并写入演示数据(8 个监测点 / 1200 条监测数据 / 52 条超标记录), 可通过环境变量 `SEED_DEMO=false` 关闭。
+首次启动会自动建表并写入演示数据(3 个片区 / 5 名责任人 / 8 个监测点 / 1200 条监测数据 / 52 条超标记录,
+含 1 次点位跨片区划转与 1 次责任人轮岗的历史记录), 可通过环境变量 `SEED_DEMO=false` 关闭。
 
 ```bash
 docker compose ps          # 查看容器与健康状态
@@ -149,25 +152,40 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --buil
 | --- | --- | --- |
 | GET | `/api/meta/health` | 健康检查(数据库连通性、时区、限值标准) |
 | GET | `/api/meta/pollutants` | 监测因子清单与限值 |
-| GET | `/api/meta/options` | 枚举选项(监测点、区域、状态、类型等) |
-| GET | `/api/meta/overview` | 首页概览聚合数据 |
-| GET/POST | `/api/stations` | 台账分页查询 / 新增 |
-| GET/PUT/DELETE | `/api/stations/{id}` | 台账详情(含分因子统计) / 更新 / 删除(级联) |
-| GET | `/api/stations/options` | 下拉选项(监测点、区域) |
+| GET | `/api/meta/options` | 枚举选项(监测点、片区、责任人、区域、状态、类型等) |
+| GET | `/api/meta/overview` | 首页概览聚合数据(含片区超标待办排名) |
+| GET/POST | `/api/areas` | 片区分页查询 / 新增 |
+| GET/PUT | `/api/areas/{id}` | 片区详情(下辖点位 + 在任责任人 + 计数) / 更新 |
+| GET | `/api/areas/options` | 片区下拉选项 |
+| GET | `/api/areas/ranking` | 片区统计排名(数据量/超标/超标率/待办, 支持筛选参数) |
+| GET | `/api/areas/history` | 监测点归属划转历史(可按片区/点位过滤) |
+| POST | `/api/areas/assignments` | 批量划转监测点到片区(生效时间 + 变更原因, 时间分段留痕) |
+| GET/POST | `/api/areas/persons` | 责任人分页查询(含当前任职片区) / 新增(可同时安排片区) |
+| GET/PUT/DELETE | `/api/areas/persons/{id}` | 责任人详情(含任职历史) / 更新 / 删除(有任职历史时禁止) |
+| GET | `/api/areas/persons/options` | 责任人下拉选项 |
+| POST | `/api/areas/memberships` | 责任人到片区任职(可指定岗位与生效时间) |
+| POST | `/api/areas/memberships/{id}/leave` | 办理卸任(生效时间 + 变更原因) |
+| GET | `/api/areas/memberships/history` | 责任人任职变更历史 |
+| GET/POST | `/api/stations` | 台账分页查询(支持 `area_id`) / 新增(选择片区或按名称自动建片区) |
+| GET/PUT/DELETE | `/api/stations/{id}` | 台账详情(含分因子统计与**归属历史**) / 更新(改片区需变更原因) / 删除(级联) |
+| GET | `/api/stations/options` | 下拉选项(监测点、片区) |
 | GET | `/api/stations/summary` | 台账规模统计 |
-| GET | `/api/measurements` | 监测数据分页查询(含筛选汇总) |
+| GET | `/api/measurements` | 监测数据分页查询(支持 `area_id` / `person_id`, 按历史片区过滤) |
 | POST | `/api/measurements/entries` | **成组录入**: 一个监测点 + 一个时刻 + 多个因子 |
 | POST | `/api/measurements/preview` | 超标校验预览(不写库) |
 | DELETE | `/api/measurements/{id}` | 删除监测数据 |
-| GET | `/api/measurements/export` | 按条件导出 CSV |
-| GET | `/api/exceedances` | 超标记录查询(含筛选统计) |
+| GET | `/api/measurements/export` | 按条件导出 CSV(含所属片区、责任人列) |
+| GET | `/api/exceedances` | 超标记录查询(支持 `area_id` / `person_id`, 含按片区统计) |
 | GET | `/api/exceedances/{id}` | 超标记录详情(含关联监测数据) |
 | PATCH | `/api/exceedances/{id}` | 单条标注 |
 | POST | `/api/exceedances/annotations` | 批量标注 |
-| GET | `/api/exceedances/summary` | 超标统计(状态/等级/高发因子/站点排名) |
-| GET | `/api/query/measurements` | 高级条件检索 |
-| GET | `/api/query/statistics` | 聚合统计(`group_by` + `metric`) |
-| GET | `/api/query/export` | 查询结果导出 CSV |
+| GET | `/api/exceedances/summary` | 超标统计(状态/等级/高发因子/站点排名/**片区排名**) |
+| GET | `/api/query/measurements` | 高级条件检索(含 `area_id` / `person_id`) |
+| GET | `/api/query/statistics` | 聚合统计(`group_by=area` 按历史归属片区) |
+| GET | `/api/query/export` | 查询结果导出 CSV(含所属片区、责任人列) |
+
+> 查询接口的 `area_id` 按**监测数据/超标发生当时**监测点所属的片区过滤(通过时间分段归属表关联),
+> `person_id` 会先展开为责任人当前任职的片区集合。排名与分组统计中的片区同样按历史归属计算。
 
 `POST /api/measurements/entries` 请求示例:
 
@@ -204,11 +222,16 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --buil
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `stations` | `code`(唯一) `name` `area` `station_type` `status` `longitude/latitude` `installed_at` | 监测点台账 |
+| `areas` | `code`(唯一) `name`(唯一) `manager` `phone` `status` | 监测点片区, 下挂多个监测点与责任人 |
+| `persons` | `employee_no`(唯一) `name` `phone` `department` `role` `status` | 责任人台账; 有任职历史时不允许删除, 只能改为离岗 |
+| `station_assignments` | `station_id` `area_id` `effective_from` `effective_end` `change_reason` `changed_by` | 监测点-片区归属**时间分段历史**, `effective_end IS NULL` 为当前归属 |
+| `area_memberships` | `area_id` `person_id` `role` `effective_from` `effective_end` `change_reason` `changed_by` | 责任人-片区任职**时间分段历史** |
+| `stations` | `code`(唯一) `name` `area_id` `area`(片区名冗余) `station_type` `status` `longitude/latitude` `installed_at` | 监测点台账 |
 | `measurements` | `station_id` `pollutant` `period` `value` `limit_value` `exceed_ratio` `is_exceeded` `measured_at` `data_source` `recorder` | 监测数据; `(station_id, pollutant, period, measured_at)` 唯一 |
 | `exceedances` | `measurement_id`(唯一) `status` `level` `note` `annotator` `annotated_at` | 超标记录与人工标注 |
 
-删除监测点会级联清理其监测数据与超标记录; 删除监测数据会同时删除对应超标记录。
+删除监测点会级联清理其监测数据与超标记录; 历史归属/任职记录随监测点或片区删除而级联清理。
+已有老库启动时会自动补建 `stations.area_id` 列与新区片表, 并把存量监测点按原区域名回填为“自 1970 年起生效”的归属段(幂等, 可随时用 `flask backfill-areas` 手动执行)。
 
 ## 配置项
 
@@ -228,7 +251,7 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --buil
 
 ```bash
 cd backend
-python -m pytest -q          # 43 个用例: 台账 CRUD/级联、录入与超标判定、标注规则、查询统计与导出、元数据接口
+python -m pytest -q          # 64 个用例: 片区/责任人与时间分段归属、台账 CRUD/级联、录入与超标判定、标注规则、按片区查询统计与导出、元数据接口
 
 cd frontend
 npm run build                # 生产构建校验
@@ -238,8 +261,9 @@ npm run build                # 生产构建校验
 
 ```bash
 curl http://localhost:5000/api/meta/health
-python -m flask --app wsgi stats      # 查看监测点/数据/超标记录数量
-python -m flask --app wsgi reset-db   # 重置数据库并重建演示数据
+python -m flask --app wsgi stats           # 查看片区/责任人/监测点/数据/超标记录数量
+python -m flask --app wsgi backfill-areas  # 老库补建片区并回填历史归属(幂等)
+python -m flask --app wsgi reset-db        # 重置数据库并重建演示数据
 ```
 
 ## 常见问题

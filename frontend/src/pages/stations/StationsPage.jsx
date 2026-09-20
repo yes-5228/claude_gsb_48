@@ -12,7 +12,7 @@ import StationFilters from './components/StationFilters.jsx'
 import StationFormModal from './components/StationFormModal.jsx'
 import StationTable from './components/StationTable.jsx'
 
-const INITIAL_FILTERS = { keyword: '', area: '', status: '', station_type: '' }
+const INITIAL_FILTERS = { keyword: '', area_id: '', status: '', station_type: '' }
 
 export default function StationsPage() {
   const toast = useToast()

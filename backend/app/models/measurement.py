@@ -72,6 +72,7 @@ class Measurement(TimestampMixin, db.Model):
                 "code": self.station.code,
                 "name": self.station.name,
                 "area": self.station.area,
+                "area_id": self.station.area_id,
                 "station_type_label": self.station.to_dict()["station_type_label"],
             }
         return payload

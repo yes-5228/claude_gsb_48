@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { exportQueryUrl, queryMeasurements, queryStatistics } from '../../api/query.js'
 import { downloadFile } from '../../api/client.js'
 import Pagination from '../../components/common/Pagination.jsx'
@@ -17,6 +18,8 @@ import StatisticsPanel from './components/StatisticsPanel.jsx'
 const INITIAL_FILTERS = {
   keyword: '',
   station_id: '',
+  area_id: '',
+  person_id: '',
   area: '',
   pollutant: '',
   period: '',
@@ -31,8 +34,21 @@ const INITIAL_FILTERS = {
 
 export default function QueryPage() {
   const toast = useToast()
-  const query = useListQuery(queryMeasurements, INITIAL_FILTERS, { pageSize: 20 })
-  const [statsParams, setStatsParams] = useState({ group_by: 'pollutant', metric: 'avg' })
+  const [searchParams] = useSearchParams()
+  // 支持从片区排名/待办链接携带 area_id / person_id 下钻
+  const initialFilters = useMemo(() => {
+    const base = { ...INITIAL_FILTERS }
+    for (const key of ['area_id', 'person_id', 'station_id', 'status']) {
+      const value = searchParams.get(key)
+      if (value) base[key] = value
+    }
+    return base
+  }, [searchParams])
+  const query = useListQuery(queryMeasurements, initialFilters, { pageSize: 20 })
+  const [statsParams, setStatsParams] = useState({
+    group_by: searchParams.get('area_id') ? 'station' : 'pollutant',
+    metric: 'avg'
+  })
   const [exporting, setExporting] = useState(false)
 
   const statsLoader = useCallback(

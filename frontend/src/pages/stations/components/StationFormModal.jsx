@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import Modal from '../../../components/common/Modal.jsx'
 import { Checkbox, Field, Input, Select, Textarea } from '../../../components/common/FormField.jsx'
 import { Alert } from '../../../components/common/Feedback.jsx'
+import { useAreaOptions } from '../../../hooks/useOptions.js'
 
 const EMPTY = {
   code: '',
   name: '',
+  area_id: '',
   area: '',
   address: '',
   station_type: 'ambient',
@@ -13,6 +15,7 @@ const EMPTY = {
   longitude: '',
   latitude: '',
   installed_at: '',
+  change_reason: '',
   remark: ''
 }
 
@@ -35,6 +38,7 @@ function toForm(station) {
   return {
     code: station.code ?? '',
     name: station.name ?? '',
+    area_id: station.area_id ?? '',
     area: station.area ?? '',
     address: station.address ?? '',
     station_type: station.station_type ?? 'ambient',
@@ -42,11 +46,15 @@ function toForm(station) {
     longitude: station.longitude ?? '',
     latitude: station.latitude ?? '',
     installed_at: station.installed_at ?? '',
+    change_reason: '',
     remark: station.remark ?? ''
   }
 }
 
 export default function StationFormModal({ open, station, areas = [], onClose, onSubmit }) {
+  const { data: areaData } = useAreaOptions()
+  const areaOptions = areas.length ? areas.map((item) => ({ value: String(item.id), label: item.name }))
+    : (areaData?.items ?? []).map((item) => ({ value: String(item.id), label: item.name }))
   const [form, setForm] = useState(EMPTY)
   const [errors, setErrors] = useState({})
   const [message, setMessage] = useState(null)
@@ -78,12 +86,27 @@ export default function StationFormModal({ open, station, areas = [], onClose, o
     setBusy(true)
     setMessage(null)
     try {
-      await onSubmit({
+      // 编辑时修改了片区, 必须填写变更原因用于历史留痕
+      const areaChanged =
+        station && form.area_id !== '' && Number(form.area_id) !== Number(station.area_id || '')
+      if (areaChanged && !form.change_reason.trim()) {
+        setErrors({ change_reason: '调整归属片区必须填写变更原因' })
+        setBusy(false)
+        return
+      }
+      const payload = {
         ...form,
+        area_id: form.area_id === '' ? undefined : Number(form.area_id),
         longitude: form.longitude === '' ? null : Number(form.longitude),
         latitude: form.latitude === '' ? null : Number(form.latitude),
-        installed_at: form.installed_at || null
-      })
+        installed_at: form.installed_at || null,
+        change_reason: areaChanged ? form.change_reason.trim() : undefined
+      }
+      if (!station && !form.area_id) {
+        // 新建时允许直接填写新片区名 (后端自动建片区), 不传 area_id
+        delete payload.area_id
+      }
+      await onSubmit(payload)
     } catch (error) {
       setErrors(error.fields || {})
       setMessage(error.message)
@@ -118,19 +141,29 @@ export default function StationFormModal({ open, station, areas = [], onClose, o
           <Field label="监测点名称" required error={errors.name}>
             <Input value={form.name} onChange={set('name')} invalid={Boolean(errors.name)} placeholder="如: 市民中心站" />
           </Field>
-          <Field label="所属区域" required error={errors.area}>
-            <Input
-              list="station-area-options"
-              value={form.area}
-              onChange={set('area')}
-              invalid={Boolean(errors.area)}
-              placeholder="如: 福田区"
+          <Field label="所属片区" required error={errors.area_id || errors.area} hint="从片区管理中选择, 或直接输入新片区名自动建档">
+            <Select
+              value={form.area_id === '' ? '' : String(form.area_id)}
+              onChange={(event) => {
+                const value = event.target.value
+                setForm({
+                  ...form,
+                  area_id: value,
+                  area: areaOptions.find((item) => item.value === value)?.label || form.area
+                })
+              }}
+              invalid={Boolean(errors.area_id || errors.area)}
+              placeholder="选择片区"
+              options={areaOptions}
             />
-            <datalist id="station-area-options">
-              {areas.map((area) => (
-                <option key={area} value={area} />
-              ))}
-            </datalist>
+          </Field>
+          <Field label="或新片区名称" error={errors.area} hint="列表中没有时直接填写, 保存后自动建立片区">
+            <Input
+              value={form.area_id ? '' : form.area}
+              onChange={(event) => setForm({ ...form, area_id: '', area: event.target.value })}
+              disabled={Boolean(form.area_id)}
+              placeholder="如: 临港新城片区"
+            />
           </Field>
           <Field label="详细地址" error={errors.address}>
             <Input value={form.address} onChange={set('address')} placeholder="道路 + 门牌" />
@@ -153,6 +186,20 @@ export default function StationFormModal({ open, station, areas = [], onClose, o
           <Field label="备注" error={errors.remark} className="span-2">
             <Textarea value={form.remark} onChange={set('remark')} placeholder="点位周边环境、运维说明等" />
           </Field>
+          {station ? (
+            <Field
+              label="归属变更原因"
+              error={errors.change_reason}
+              className="span-2"
+              hint="仅当调整所属片区时需要填写, 将写入归属历史"
+            >
+              <Input
+                value={form.change_reason}
+                onChange={set('change_reason')}
+                placeholder="如: 行政区划调整、点位移交其他片区"
+              />
+            </Field>
+          ) : null}
         </div>
         {!station ? (
           <Checkbox

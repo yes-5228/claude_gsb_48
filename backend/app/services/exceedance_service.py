@@ -29,6 +29,17 @@ def _int_list(args, name):
     return values
 
 
+def _person_area_ids(person_ids):
+    if not person_ids:
+        return []
+    from . import area_service
+
+    scope = set()
+    for person_id in person_ids:
+        scope.update(area_service.area_ids_for_person(person_id))
+    return list(scope)
+
+
 def _date_arg(args, name, end_of_day=False):
     from datetime import time
 
@@ -66,6 +77,17 @@ def exceedance_query(args):
     areas = _split(args.get("area"))
     if areas:
         query = query.filter(Station.area.in_(areas))
+    area_ids = _int_list(args, "area_id")
+    person_ids = _int_list(args, "person_id")
+    if person_ids:
+        area_ids = list(set(area_ids) | set(_person_area_ids(person_ids)))
+    if area_ids:
+        from . import area_service
+
+        effective_area_id = area_service.effective_area_id_expr(
+            Exceedance.station_id, Exceedance.measured_at
+        )
+        query = query.filter(effective_area_id.in_(area_ids))
     keyword = (args.get("keyword") or "").strip()
     if keyword:
         like = "%" + keyword + "%"
@@ -234,6 +256,35 @@ def summary(args):
         )
     ]
 
+    # 按“超标发生时”监测点所属片区汇总, 支持片区待办下钻
+    from . import area_service
+
+    effective_id = area_service.effective_area_id_expr(
+        Exceedance.station_id, Exceedance.measured_at
+    )
+    effective_name = area_service.area_name_expr(effective_id)
+    area_rows = (
+        base.with_entities(
+            effective_id.label("area_id"),
+            effective_name.label("area_name"),
+            func.count(Exceedance.id).label("total_count"),
+            func.sum(cast(Exceedance.status == "pending", db.Integer)).label("pending_count"),
+        )
+        .group_by(effective_id, effective_name)
+        .order_by(func.count(Exceedance.id).desc())
+        .limit(10)
+        .all()
+    )
+    top_areas = [
+        {
+            "area_id": row.area_id,
+            "area_name": row.area_name or "未分组片区",
+            "count": int(row.total_count),
+            "pending_count": int(row.pending_count or 0),
+        }
+        for row in area_rows
+    ]
+
     totals = db.session.query(
         func.count(subquery.c.id),
         func.max(subquery.c.exceed_ratio),
@@ -247,6 +298,7 @@ def summary(args):
         "by_level": list(by_level.values()),
         "top_pollutants": top_pollutants,
         "top_stations": top_stations,
+        "top_areas": top_areas,
         "max_ratio": round(float(totals[1] or 0), 3),
         "avg_ratio": round(float(totals[2] or 0), 3),
         "generated_at": iso(datetime.now()),

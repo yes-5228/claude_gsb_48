@@ -2,7 +2,7 @@
 from flask import Blueprint, current_app, request
 
 from ..domain.constants import EXCEEDANCE_LEVEL_LABELS, EXCEEDANCE_STATUS_LABELS, PERIOD_LABELS
-from ..services import exceedance_service
+from ..services import area_service, exceedance_service
 from ..utils.pagination import paginate_query
 from ..utils.validation import Validator
 from .helpers import json_payload, list_payload
@@ -26,6 +26,8 @@ def exceedance_summary():
 
 @bp.get("/options")
 def exceedance_options():
+    from ..services import area_service
+
     return {
         "levels": [
             {"value": key, "label": label}
@@ -36,6 +38,8 @@ def exceedance_options():
             for key, label in EXCEEDANCE_STATUS_LABELS.items()
         ],
         "periods": [{"value": key, "label": label} for key, label in PERIOD_LABELS.items()],
+        "area_options": area_service.area_options(),
+        "person_options": area_service.person_options(),
     }
 
 
@@ -46,9 +50,14 @@ def export_exceedances():
     rows = exceedance_service.exceedance_query(request.args).limit(
         current_app.config["MAX_EXPORT_ROWS"]
     ).all()
+    resolver = area_service.historical_area_resolver(rows)
+    area_context = area_service.build_export_context(rows, resolver)
     columns = [
         ("站点编码", lambda row: row.station.code if row.station else ""),
         ("站点名称", lambda row: row.station.name if row.station else ""),
+        ("所属片区", lambda row: area_context.get(resolver(row), {}).get("name")
+            or (row.station.area if row.station else "")),
+        ("责任人", lambda row: area_context.get(resolver(row), {}).get("persons", "")),
         ("监测因子", "pollutant"),
         ("监测值", "value"),
         ("限值", "limit_value"),

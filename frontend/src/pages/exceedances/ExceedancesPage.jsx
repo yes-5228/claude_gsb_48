@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { batchAnnotate, listExceedances } from '../../api/exceedances.js'
 import Pagination from '../../components/common/Pagination.jsx'
 import { SectionCard } from '../../components/common/Card.jsx'
@@ -16,6 +17,8 @@ const INITIAL_FILTERS = {
   level: '',
   pollutant: '',
   station_id: '',
+  area_id: '',
+  person_id: '',
   date_from: '',
   date_to: '',
   keyword: ''
@@ -23,7 +26,20 @@ const INITIAL_FILTERS = {
 
 export default function ExceedancesPage() {
   const toast = useToast()
-  const query = useListQuery(listExceedances, INITIAL_FILTERS)
+  const [searchParams] = useSearchParams()
+  // 从片区排名“超标待办”链接下钻时自动带上片区与待标注状态
+  const initialFilters = useMemo(() => {
+    const base = { ...INITIAL_FILTERS }
+    for (const key of ['area_id', 'person_id', 'station_id']) {
+      const value = searchParams.get(key)
+      if (value) base[key] = value
+    }
+    if (searchParams.get('area_id') || searchParams.get('person_id')) {
+      base.status = searchParams.get('status') || 'pending'
+    }
+    return base
+  }, [searchParams])
+  const query = useListQuery(listExceedances, initialFilters)
   const [selected, setSelected] = useState([])
   const [activeId, setActiveId] = useState(null)
   const [batch, setBatch] = useState({ status: 'confirmed', note: '', annotator: '' })
@@ -81,8 +97,7 @@ export default function ExceedancesPage() {
         onReset={() => {
           setSelected([])
           query.setFilters(INITIAL_FILTERS)
-        }}
-      />
+        }}      />
 
       {query.error ? <Alert tone="error">{query.error.message}</Alert> : null}
 

@@ -1,10 +1,13 @@
 """监测点台账业务逻辑."""
+from datetime import datetime
+
 from sqlalchemy import cast, func, or_
 
 from ..domain.constants import STATION_STATUS_LABELS, STATION_TYPE_LABELS
-from ..errors import ConflictError, NotFoundError
+from ..errors import ConflictError, NotFoundError, ValidationError
 from ..extensions import db
-from ..models import Exceedance, Measurement, Station
+from ..models import Area, Exceedance, Measurement, Station
+from . import area_service
 
 
 def _split(value):
@@ -21,6 +24,13 @@ def station_query(args):
         query = query.filter(
             or_(Station.name.like(like), Station.code.like(like), Station.address.like(like))
         )
+    area_ids = _split(args.get("area_id"))
+    if area_ids:
+        try:
+            area_ids = [int(item) for item in area_ids]
+        except ValueError:
+            raise ValidationError("area_id 参数必须为整数", fields={"area_id": "invalid_integer"})
+        query = query.filter(Station.area_id.in_(area_ids))
     area = (args.get("area") or "").strip()
     if area:
         query = query.filter(Station.area.in_(_split(area)))
@@ -41,6 +51,30 @@ def station_query(args):
     return query.order_by(direction)
 
 
+def _resolve_area(data):
+    """确定监测点归属片区: 优先 area_id, 其次按名称匹配, 匹配不到则自动建片区。
+
+    返回 (area, effective_from, reason, changed_by)。
+    """
+    area_id = data.pop("area_id", None)
+    if area_id is not None:
+        area = db.session.get(Area, int(area_id))
+        if area is None:
+            raise ValidationError("所属片区不存在: id=%s" % area_id, fields={"area_id": "not_found"})
+        if area.status != "active":
+            raise ValidationError("片区 %s 已停用, 不能新增监测点" % area.name,
+                                  fields={"area_id": "inactive"})
+        # 以片区名为准, 保证冗余 area 字段一致
+        data["area"] = area.name
+        return area
+
+    name = (data.get("area") or "").strip()
+    if not name:
+        raise ValidationError("请选择所属片区", fields={"area_id": "required"})
+    data["area"] = name
+    return area_service.ensure_area_by_name(name)
+
+
 def get_station(station_id):
     station = db.session.get(Station, station_id)
     if station is None:
@@ -48,24 +82,51 @@ def get_station(station_id):
     return station
 
 
-def create_station(data):
+def create_station(data, operator=None):
     code = data["code"]
     if Station.query.filter(func.lower(Station.code) == code.lower()).first():
         raise ConflictError("监测点编码 %s 已存在" % code)
+    area = _resolve_area(data)
+    effective_from = data.pop("_effective_from", None)
+    reason = data.pop("_change_reason", None)
     station = Station(**data)
+    station.area_id = area.id
     db.session.add(station)
+    db.session.flush()
+    area_service.assign_station(
+        station, area,
+        effective_from=effective_from or datetime.now(),
+        reason=reason or "监测点建档划入片区",
+        changed_by=operator,
+    )
     db.session.commit()
     return station
 
 
-def update_station(station, data):
+def update_station(station, data, operator=None):
     code = data.get("code")
     if code and code.lower() != station.code.lower():
         exists = Station.query.filter(func.lower(Station.code) == code.lower()).first()
         if exists and exists.id != station.id:
             raise ConflictError("监测点编码 %s 已存在" % code)
+
+    reason = data.pop("_change_reason", None)
+    effective_from = data.pop("_effective_from", None)
+    new_area = None
+    if "area_id" in data or (data.get("area") and data.get("area") != station.area):
+        new_area = _resolve_area(data)
+
     for field, value in data.items():
         setattr(station, field, value)
+    db.session.flush()
+
+    if new_area is not None and new_area.id != station.area_id:
+        area_service.assign_station(
+            station, new_area,
+            effective_from=effective_from,
+            reason=reason or "台账调整归属片区",
+            changed_by=operator,
+        )
     db.session.commit()
     return station
 
@@ -155,8 +216,13 @@ def option_list():
 
 
 def area_list():
+    """历史区域名清单, 同时兼容老的按名称筛选; 新筛选请使用 /areas/options。"""
     rows = db.session.query(Station.area).distinct().order_by(Station.area.asc()).all()
     return [row[0] for row in rows if row[0]]
+
+
+def assignment_history(station):
+    return [item.to_dict() for item in station.assignments]
 
 
 def metadata_summary():

@@ -7,7 +7,7 @@ import { formatNumber, formatPercent } from '../../../utils/format.js'
 const GROUP_OPTIONS = [
   { value: 'pollutant', label: '按监测因子' },
   { value: 'station', label: '按监测点' },
-  { value: 'area', label: '按区域' },
+  { value: 'area', label: '按片区 (历史归属)' },
   { value: 'day', label: '按日' },
   { value: 'month', label: '按月' },
   { value: 'period', label: '按数据周期' },

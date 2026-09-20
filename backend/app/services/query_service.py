@@ -79,6 +79,8 @@ def parse_filters(args):
     filters = {
         "station_ids": _int_list(args, "station_id"),
         "areas": _split(args.get("area")),
+        "area_ids": _int_list(args, "area_id"),
+        "person_ids": _int_list(args, "person_id"),
         "station_types": _split(args.get("station_type")),
         "pollutants": pollutants,
         "periods": periods,
@@ -92,6 +94,14 @@ def parse_filters(args):
         "keyword": (args.get("keyword") or "").strip(),
         "recorder": (args.get("recorder") or "").strip(),
     }
+    # 责任人按其当前任职片区展开为片区 id 集合
+    if filters["person_ids"]:
+        from . import area_service
+
+        scope = set()
+        for person_id in filters["person_ids"]:
+            scope.update(area_service.area_ids_for_person(person_id))
+        filters["area_ids"] = list(set(filters["area_ids"]) | scope)
     if filters["date_from"] and filters["date_to"] and filters["date_from"] > filters["date_to"]:
         raise ValidationError(
             "开始时间不能晚于结束时间", fields={"date_from": "range_invalid"}
@@ -111,6 +121,14 @@ def apply_filters(query, filters):
         query = query.filter(Measurement.station_id.in_(filters["station_ids"]))
     if filters["areas"]:
         query = query.filter(Station.area.in_(filters["areas"]))
+    if filters["area_ids"]:
+        # 按数据产生时监测点所属的历史片区过滤, 而非当前片区
+        from . import area_service
+
+        effective_area_id = area_service.effective_area_id_expr(
+            Measurement.station_id, Measurement.measured_at
+        )
+        query = query.filter(effective_area_id.in_(filters["area_ids"]))
     if filters["station_types"]:
         query = query.filter(Station.station_type.in_(filters["station_types"]))
     if filters["pollutants"]:
@@ -230,9 +248,19 @@ def statistics(args):
         ).group_by(Station.id, Station.code, Station.name, Station.area)
         is_time_group = False
     elif group_by == "area":
+        from . import area_service
+
+        effective_id = area_service.effective_area_id_expr(
+            Measurement.station_id, Measurement.measured_at
+        )
+        effective_name = area_service.area_name_expr(effective_id)
         query = db.session.query(
-            Station.area.label("area"), value_expr, count_expr, exceeded_expr
-        ).group_by(Station.area)
+            effective_id.label("area_id"),
+            effective_name.label("area"),
+            value_expr,
+            count_expr,
+            exceeded_expr,
+        ).group_by(effective_id, effective_name)
         is_time_group = False
     elif group_by == "day":
         bucket = func.date(Measurement.measured_at).label("bucket")
@@ -269,7 +297,9 @@ def statistics(args):
             key = data.get("station_code")
             label = "%s %s" % (data.get("station_code"), data.get("station_name"))
         elif group_by == "area":
-            key = label = data.get("area")
+            key = label = data.get("area") or ("未分组#%s" % data.get("area_id") if data.get("area_id") else "未分组")
+            if not data.get("area"):
+                label = "未分组片区"
         elif group_by == "day":
             key = str(data.get("bucket"))
             label = key
@@ -287,16 +317,17 @@ def statistics(args):
             key = data.get("bucket")
             label = DATA_SOURCE_LABELS.get(key, key)
 
-        items.append(
-            {
-                "key": key,
-                "label": label,
-                "value": round(float(raw_value), 2) if raw_value is not None else None,
-                "count": count,
-                "exceeded_count": exceeded,
-                "exceed_rate": round(exceeded / count, 4) if count else 0.0,
-            }
-        )
+        item = {
+            "key": key,
+            "label": label,
+            "value": round(float(raw_value), 2) if raw_value is not None else None,
+            "count": count,
+            "exceeded_count": exceeded,
+            "exceed_rate": round(exceeded / count, 4) if count else 0.0,
+        }
+        if group_by == "area":
+            item["area_id"] = data.get("area_id")
+        items.append(item)
 
     if is_time_group:
         items.sort(key=lambda item: item["key"])
@@ -325,4 +356,6 @@ def option_payload():
         "station_type": [
             {"value": key, "label": label} for key, label in STATION_TYPE_LABELS.items()
         ],
+        "area_options_supported": True,
+        "person_filter_supported": True,
     }

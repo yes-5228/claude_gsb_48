@@ -14,6 +14,16 @@ STATION_TYPE_LABELS = {
 
 STATION_STATUS_LABELS = {"active": "运行中", "maintenance": "维护中", "offline": "停用"}
 
+AREA_STATUS_LABELS = {"active": "启用", "inactive": "停用"}
+
+PERSON_ROLE_LABELS = {
+    "leader": "片区负责人",
+    "officer": "运维专员",
+    "inspector": "督查员",
+}
+
+PERSON_STATUS_LABELS = {"active": "在职", "inactive": "离岗"}
+
 EXCEEDANCE_LEVEL_LABELS = {"light": "轻度超标", "moderate": "中度超标", "severe": "重度超标"}
 
 EXCEEDANCE_STATUS_LABELS = {"pending": "待标注", "confirmed": "已确认", "ignored": "已忽略"}
@@ -27,6 +37,9 @@ def options_payload():
     return {
         "station_type": as_options(STATION_TYPE_LABELS),
         "station_status": as_options(STATION_STATUS_LABELS),
+        "area_status": as_options(AREA_STATUS_LABELS),
+        "person_role": as_options(PERSON_ROLE_LABELS),
+        "person_status": as_options(PERSON_STATUS_LABELS),
         "period": as_options(PERIOD_LABELS),
         "data_source": as_options(DATA_SOURCE_LABELS),
         "exceedance_level": as_options(EXCEEDANCE_LEVEL_LABELS),

@@ -10,7 +10,6 @@ import Tag from '../../components/common/Tag.jsx'
 import { EXCEEDANCE_LEVEL_TONE } from '../../constants/index.js'
 import { useAsyncData } from '../../hooks/useAsyncData.js'
 import { formatDateTime, formatNumber, formatPercent, formatRatio } from '../../utils/format.js'
-
 export default function OverviewPage() {
   const loader = useCallback(() => overview(), [])
   const { data, loading, error, reload } = useAsyncData(loader)
@@ -19,11 +18,13 @@ export default function OverviewPage() {
   if (error && !data) return <ErrorState error={error} onRetry={reload} />
   if (!data) return null
 
-  const { stations, measurements, exceedances, trend, pending_exceedances: pending } = data
+  const { stations, measurements, exceedances, trend, area_ranking: areaRankingData,
+    pending_exceedances: pending } = data
 
   const pendingColumns = [
     { key: 'measured_at', title: '监测时间', className: 'cell-nowrap', render: (row) => formatDateTime(row.measured_at) },
     { key: 'station_name', title: '监测点', render: (row) => row.station_name },
+    { key: 'area_name', title: '所属片区', render: (row) => row.area_name || '-' },
     { key: 'pollutant_label', title: '因子' },
     {
       key: 'value',
@@ -44,6 +45,32 @@ export default function OverviewPage() {
     count: item.count,
     ratio: stations.total ? item.count / stations.total : 0
   }))
+
+  const areaRankColumns = [
+    {
+      key: 'label',
+      title: '片区',
+      render: (row) => (
+        <Link to={`/exceedances?area_id=${row.area_id ?? ''}`} className="strong">
+          {row.label}
+        </Link>
+      )
+    },
+    { key: 'measurement_count', title: '监测数据', align: 'right', render: (row) => formatNumber(row.measurement_count, 0) },
+    {
+      key: 'exceeded_count',
+      title: '超标记录',
+      align: 'right',
+      render: (row) => (row.exceeded_count ? <span className="danger-text strong">{row.exceeded_count}</span> : '0')
+    },
+    { key: 'exceed_rate', title: '超标率', align: 'right', render: (row) => formatPercent(row.exceed_rate) },
+    {
+      key: 'pending_count',
+      title: '待办待标注',
+      align: 'right',
+      render: (row) => (row.pending_count ? <Tag tone="warning">{row.pending_count} 条</Tag> : <span className="muted">-</span>)
+    }
+  ]
 
   return (
     <>
@@ -107,6 +134,22 @@ export default function OverviewPage() {
           </div>
         </SectionCard>
       </div>
+
+      <SectionCard
+        title="片区超标待办排名"
+        hint="按数据产生时监测点所属片区汇总, 点击片区可下钻查看超标待办"
+        actions={
+          <Link className="btn btn-sm" to="/areas">
+            片区与责任人管理
+          </Link>
+        }
+      >
+        <DataTable
+          columns={areaRankColumns}
+          rows={(areaRankingData?.items || []).slice(0, 8)}
+          emptyText="暂无片区数据"
+        />
+      </SectionCard>
 
       <SectionCard
         title="待标注超标记录 (最近 5 条)"

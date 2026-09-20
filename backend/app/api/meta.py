@@ -14,7 +14,7 @@ from ..domain.constants import (
 )
 from ..domain.standards import POLLUTANTS
 from ..extensions import db
-from ..services import exceedance_service, query_service, station_service
+from ..services import area_service, exceedance_service, query_service, station_service
 
 bp = Blueprint("meta", __name__)
 
@@ -49,6 +49,8 @@ def options():
     payload = options_payload()
     payload["stations"] = station_service.option_list()
     payload["areas"] = station_service.area_list()
+    payload["area_options"] = area_service.area_options()
+    payload["person_options"] = area_service.person_options()
     return payload
 
 
@@ -74,6 +76,7 @@ def overview():
         "stations": station_service.metadata_summary(),
         "measurements": query_service.summary(filters),
         "exceedances": exceedance_service.summary({}),
+        "area_ranking": area_service.area_ranking(filters),
         "pending_exceedances": [record.to_dict() for record in pending_records],
         "trend": trend,
         "labels": {

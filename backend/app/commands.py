@@ -2,7 +2,7 @@
 import click
 
 from .extensions import db
-from .models import Exceedance, Measurement, Station
+from .models import Area, AreaMembership, Exceedance, Measurement, Person, Station
 
 
 def register_commands(app):
@@ -45,10 +45,20 @@ def register_commands(app):
     def stats():
         """Print a short record summary."""
         click.echo(
-            "监测点 %d 个 / 监测数据 %d 条 / 超标记录 %d 条"
+            "片区 %d 个 / 责任人 %d 人 / 监测点 %d 个 / 监测数据 %d 条 / 超标记录 %d 条"
             % (
+                Area.query.count(),
+                Person.query.count(),
                 Station.query.count(),
                 Measurement.query.count(),
                 Exceedance.query.count(),
             )
         )
+
+    @app.cli.command("backfill-areas")
+    def backfill_areas():
+        """Backfill area + assignment rows for stations created before area management."""
+        from .services import area_service
+
+        changed = area_service.backfill_station_areas()
+        click.echo("片区归属回填完成, 补建归属记录 %d 条" % changed)

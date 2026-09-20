@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FilterPanel } from '../../../components/common/Card.jsx'
 import { Field, Input, Select } from '../../../components/common/FormField.jsx'
-import { usePollutantMeta, useStationOptions } from '../../../hooks/useOptions.js'
+import { useAreaOptions, usePersonOptions, usePollutantMeta, useStationOptions } from '../../../hooks/useOptions.js'
 
 const STATUS_OPTIONS = [
   { value: 'pending', label: '待标注' },
@@ -19,6 +19,8 @@ export default function ExceedanceFilters({ value, loading, onSubmit, onReset })
   const [draft, setDraft] = useState(value)
   const { data: stationData } = useStationOptions()
   const { data: pollutantData } = usePollutantMeta()
+  const { data: areaData } = useAreaOptions()
+  const { data: personData } = usePersonOptions()
 
   useEffect(() => {
     setDraft(value)
@@ -31,7 +33,10 @@ export default function ExceedanceFilters({ value, loading, onSubmit, onReset })
       loading={loading}
       onSearch={() => onSubmit(draft)}
       onReset={() => {
-        setDraft({ status: '', level: '', pollutant: '', station_id: '', date_from: '', date_to: '', keyword: '' })
+        setDraft({
+          status: '', level: '', pollutant: '', station_id: '', area_id: '', person_id: '',
+          date_from: '', date_to: '', keyword: ''
+        })
         onReset()
       }}
     >
@@ -40,6 +45,25 @@ export default function ExceedanceFilters({ value, loading, onSubmit, onReset })
       </Field>
       <Field label="超标等级">
         <Select value={draft.level || ''} onChange={update('level')} placeholder="全部等级" options={LEVEL_OPTIONS} />
+      </Field>
+      <Field label="所属片区">
+        <Select
+          value={draft.area_id || ''}
+          onChange={update('area_id')}
+          placeholder="全部片区 (按超标发生时归属)"
+          options={(areaData?.items ?? []).map((item) => ({ value: String(item.id), label: item.name }))}
+        />
+      </Field>
+      <Field label="责任人">
+        <Select
+          value={draft.person_id || ''}
+          onChange={update('person_id')}
+          placeholder="全部责任人"
+          options={(personData?.items ?? []).map((item) => ({
+            value: String(item.id),
+            label: `${item.name} · ${item.role_label}`
+          }))}
+        />
       </Field>
       <Field label="监测点">
         <Select

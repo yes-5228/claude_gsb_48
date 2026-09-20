@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FilterPanel } from '../../../components/common/Card.jsx'
 import { Field, Input, Select } from '../../../components/common/FormField.jsx'
-import { usePollutantMeta, useStationOptions } from '../../../hooks/useOptions.js'
+import { useAreaOptions, usePersonOptions, usePollutantMeta, useStationOptions } from '../../../hooks/useOptions.js'
 
 const PERIODS = [
   { value: 'hourly', label: '小时均值' },
@@ -29,6 +29,8 @@ export default function QueryFilters({ value, loading, onSubmit, onReset }) {
   const [draft, setDraft] = useState(value)
   const { data: stationData } = useStationOptions()
   const { data: pollutantData } = usePollutantMeta()
+  const { data: areaData } = useAreaOptions()
+  const { data: personData } = usePersonOptions()
 
   useEffect(() => {
     setDraft(value)
@@ -42,8 +44,8 @@ export default function QueryFilters({ value, loading, onSubmit, onReset }) {
       onSearch={() => onSubmit(draft)}
       onReset={() => {
         setDraft({
-          keyword: '', station_id: '', area: '', pollutant: '', period: '',
-          is_exceeded: '', exceedance_status: '', data_source: '',
+          keyword: '', station_id: '', area_id: '', person_id: '', area: '', pollutant: '',
+          period: '', is_exceeded: '', exceedance_status: '', data_source: '',
           date_from: '', date_to: '', min_value: '', max_value: ''
         })
         onReset()
@@ -71,6 +73,25 @@ export default function QueryFilters({ value, loading, onSubmit, onReset }) {
           onChange={update('area')}
           placeholder="全部区域"
           options={(stationData?.areas ?? []).map((area) => ({ value: area, label: area }))}
+        />
+      </Field>
+      <Field label="所属片区">
+        <Select
+          value={draft.area_id || ''}
+          onChange={update('area_id')}
+          placeholder="全部片区 (按数据产生时归属)"
+          options={(areaData?.items ?? []).map((item) => ({ value: String(item.id), label: item.name }))}
+        />
+      </Field>
+      <Field label="责任人">
+        <Select
+          value={draft.person_id || ''}
+          onChange={update('person_id')}
+          placeholder="全部责任人 (按当前任职片区)"
+          options={(personData?.items ?? []).map((item) => ({
+            value: String(item.id),
+            label: `${item.name} · ${item.role_label}`
+          }))}
         />
       </Field>
       <Field label="监测因子">
