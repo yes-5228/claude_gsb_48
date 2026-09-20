@@ -6,8 +6,9 @@ import { formatNumber, formatPercent } from '../../../utils/format.js'
 
 const GROUP_OPTIONS = [
   { value: 'pollutant', label: '按监测因子' },
+  { value: 'zone', label: '按片区' },
   { value: 'station', label: '按监测点' },
-  { value: 'area', label: '按区域' },
+  { value: 'area', label: '按行政区域' },
   { value: 'day', label: '按日' },
   { value: 'month', label: '按月' },
   { value: 'period', label: '按数据周期' },
@@ -22,7 +23,7 @@ const METRIC_OPTIONS = [
   { value: 'sum', label: '合计' }
 ]
 
-export default function StatisticsPanel({ params, onChange, data, loading, error, onRun }) {
+export default function StatisticsPanel({ params, onChange, data, loading, error, onRun, onDrillZone }) {
   const items = data?.items ?? []
   const isCount = params.metric === 'count'
 
@@ -73,15 +74,29 @@ export default function StatisticsPanel({ params, onChange, data, loading, error
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => (
-                    <tr key={item.key}>
-                      <td>{item.label}</td>
-                      <td className="text-right strong">{formatNumber(item.value)}</td>
-                      <td className="text-right">{item.count}</td>
-                      <td className="text-right danger-text">{item.exceeded_count}</td>
-                      <td className="text-right">{formatPercent(item.exceed_rate)}</td>
-                    </tr>
-                  ))}
+                  {items.map((item) => {
+                    const drillable = params.group_by === 'zone' && onDrillZone
+                    return (
+                      <tr
+                        key={item.key}
+                        className={drillable ? 'clickable' : ''}
+                        onClick={drillable ? () => onDrillZone(item) : undefined}
+                        title={drillable ? '点击按该片区筛选结果' : undefined}
+                      >
+                        <td>
+                          {item.label}
+                          {params.group_by === 'zone' && item.station_count !== undefined ? (
+                            <span className="muted small"> ({item.station_count} 个点位)</span>
+                          ) : null}
+                          {drillable ? <span className="muted small"> ⤓</span> : null}
+                        </td>
+                        <td className="text-right strong">{formatNumber(item.value)}</td>
+                        <td className="text-right">{item.count}</td>
+                        <td className="text-right danger-text">{item.exceeded_count}</td>
+                        <td className="text-right">{formatPercent(item.exceed_rate)}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

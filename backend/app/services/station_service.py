@@ -4,13 +4,24 @@ from sqlalchemy import cast, func, or_
 from ..domain.constants import STATION_STATUS_LABELS, STATION_TYPE_LABELS
 from ..errors import ConflictError, NotFoundError
 from ..extensions import db
-from ..models import Exceedance, Measurement, Station
+from ..models import Exceedance, Measurement, Station, Zone
+from . import zone_service
 
 
 def _split(value):
     if not value:
         return []
     return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def _as_int_ids(values):
+    result = []
+    for item in values:
+        try:
+            result.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return result
 
 
 def station_query(args):
@@ -24,6 +35,18 @@ def station_query(args):
     area = (args.get("area") or "").strip()
     if area:
         query = query.filter(Station.area.in_(_split(area)))
+    zone_ids = _split(args.get("zone_id"))
+    if zone_ids:
+        if "none" in zone_ids:
+            zone_values = [item for item in zone_ids if item != "none"]
+            if zone_values:
+                query = query.filter(
+                    or_(Station.zone_id.is_(None), Station.zone_id.in_(_as_int_ids(zone_values)))
+                )
+            else:
+                query = query.filter(Station.zone_id.is_(None))
+        else:
+            query = query.filter(Station.zone_id.in_(_as_int_ids(zone_ids)))
     statuses = _split(args.get("status"))
     if statuses:
         query = query.filter(Station.status.in_(statuses))
@@ -52,8 +75,13 @@ def create_station(data):
     code = data["code"]
     if Station.query.filter(func.lower(Station.code) == code.lower()).first():
         raise ConflictError("监测点编码 %s 已存在" % code)
+    if data.get("zone_id") is not None:
+        data["zone_id"] = zone_service.validate_zone_id(data["zone_id"])
     station = Station(**data)
     db.session.add(station)
+    if station.zone_id is not None:
+        db.session.flush()
+        _record_zone_change(station, None, station.zone_id, reason="assign")
     db.session.commit()
     return station
 
@@ -64,10 +92,44 @@ def update_station(station, data):
         exists = Station.query.filter(func.lower(Station.code) == code.lower()).first()
         if exists and exists.id != station.id:
             raise ConflictError("监测点编码 %s 已存在" % code)
+    zone_id_present = "zone_id" in data
+    next_zone_id = data.get("zone_id")
+    if zone_id_present and next_zone_id is not None:
+        next_zone_id = zone_service.validate_zone_id(next_zone_id)
+    previous_zone_id = station.zone_id
     for field, value in data.items():
         setattr(station, field, value)
+    if zone_id_present:
+        station.zone_id = next_zone_id
+        if next_zone_id != previous_zone_id:
+            _record_zone_change(
+                station,
+                previous_zone_id,
+                next_zone_id,
+                reason=zone_service._derive_reason(previous_zone_id, next_zone_id),
+            )
     db.session.commit()
     return station
+
+
+def _record_zone_change(station, previous_zone_id, zone_id, reason):
+    """Append a snapshot row to station_zone_histories (never edits old rows)."""
+    from ..models import StationZoneHistory
+
+    previous_zone = db.session.get(Zone, previous_zone_id) if previous_zone_id else None
+    target_zone = db.session.get(Zone, zone_id) if zone_id else None
+    db.session.add(
+        StationZoneHistory(
+            station_id=station.id,
+            zone_id=zone_id,
+            previous_zone_id=previous_zone_id,
+            reason=reason,
+            station_code=station.code,
+            station_name=station.name,
+            zone_name=target_zone.name if target_zone else None,
+            previous_zone_name=previous_zone.name if previous_zone else None,
+        )
+    )
 
 
 def delete_station(station):
@@ -160,6 +222,8 @@ def area_list():
 
 
 def metadata_summary():
+    from ..models import Zone
+
     total = Station.query.count()
     by_status = [
         {"key": key, "label": label, "count": Station.query.filter_by(status=key).count()}
@@ -169,4 +233,13 @@ def metadata_summary():
         {"key": key, "label": label, "count": Station.query.filter_by(station_type=key).count()}
         for key, label in STATION_TYPE_LABELS.items()
     ]
-    return {"total": total, "by_status": by_status, "by_type": by_type}
+    zoned = Station.query.filter(Station.zone_id.isnot(None)).count()
+    return {
+        "total": total,
+        "by_status": by_status,
+        "by_type": by_type,
+        "zone_count": Zone.query.count(),
+        "active_zone_count": Zone.query.filter_by(status="active").count(),
+        "zoned_station_count": zoned,
+        "unzoned_station_count": total - zoned,
+    }

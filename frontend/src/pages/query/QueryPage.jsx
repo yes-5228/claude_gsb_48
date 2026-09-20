@@ -8,15 +8,17 @@ import StatCard from '../../components/common/StatCard.jsx'
 import { useToast } from '../../components/common/ToastProvider.jsx'
 import { useAsyncData } from '../../hooks/useAsyncData.js'
 import { useListQuery } from '../../hooks/useListQuery.js'
+import { useUrlFilters } from '../../hooks/useUrlFilters.js'
 import { saveBlob } from '../../utils/download.js'
 import { formatDateTime, formatNumber, formatPercent } from '../../utils/format.js'
 import QueryFilters from './components/QueryFilters.jsx'
 import QueryResultTable from './components/QueryResultTable.jsx'
 import StatisticsPanel from './components/StatisticsPanel.jsx'
 
-const INITIAL_FILTERS = {
+const DEFAULT_FILTERS = {
   keyword: '',
   station_id: '',
+  zone_id: '',
   area: '',
   pollutant: '',
   period: '',
@@ -31,7 +33,8 @@ const INITIAL_FILTERS = {
 
 export default function QueryPage() {
   const toast = useToast()
-  const query = useListQuery(queryMeasurements, INITIAL_FILTERS, { pageSize: 20 })
+  const initialFilters = useUrlFilters(DEFAULT_FILTERS)
+  const query = useListQuery(queryMeasurements, initialFilters, { pageSize: 20 })
   const [statsParams, setStatsParams] = useState({ group_by: 'pollutant', metric: 'avg' })
   const [exporting, setExporting] = useState(false)
 
@@ -67,7 +70,7 @@ export default function QueryPage() {
         value={query.filters}
         loading={query.loading}
         onSubmit={(next) => query.setFilters(next)}
-        onReset={() => query.setFilters(INITIAL_FILTERS)}
+        onReset={() => query.setFilters(DEFAULT_FILTERS)}
       />
 
       {query.error ? <Alert tone="error">{query.error.message}</Alert> : null}
@@ -96,6 +99,10 @@ export default function QueryPage() {
         loading={stats.loading}
         error={stats.error}
         onRun={stats.reload}
+        onDrillZone={(item) => {
+          query.setFilters({ ...query.filters, zone_id: item.zone_id ? String(item.zone_id) : 'none' })
+          toast.info(`已按片区「${item.label}」筛选结果`)
+        }}
       />
 
       <SectionCard

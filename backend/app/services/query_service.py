@@ -2,6 +2,7 @@
 from datetime import datetime, time
 
 from sqlalchemy import cast, func, or_
+from sqlalchemy.orm import joinedload
 
 from ..domain.constants import (
     DATA_SOURCE_LABELS,
@@ -12,11 +13,11 @@ from ..domain.constants import (
 from ..domain.standards import POLLUTANT_CODES, get_pollutant
 from ..errors import ValidationError
 from ..extensions import db
-from ..models import Exceedance, Measurement, Station
+from ..models import Exceedance, Measurement, Station, Zone
 from ..models.base import iso
 from ..utils.validation import parse_date
 
-GROUP_BY_CHOICES = ("station", "area", "pollutant", "period", "day", "month", "data_source")
+GROUP_BY_CHOICES = ("station", "zone", "area", "pollutant", "period", "day", "month", "data_source")
 METRIC_CHOICES = ("avg", "max", "min", "count", "sum")
 SORT_CHOICES = ("measured_at", "value", "exceed_ratio", "pollutant", "station_code", "created_at")
 
@@ -25,6 +26,21 @@ def _split(value):
     if not value:
         return []
     return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def _zone_filter_values(args):
+    """Return (ids, only_unassigned). ``zone_id=none`` means stations with no zone."""
+    raw = _split(args.get("zone_id"))
+    only_none = "none" in raw
+    ids = []
+    for item in raw:
+        if item == "none":
+            continue
+        try:
+            ids.append(int(item))
+        except ValueError:
+            raise ValidationError("zone_id 参数必须为整数或 none", fields={"zone_id": "invalid"})
+    return ids, only_none
 
 
 def _int_list(args, name):
@@ -76,9 +92,12 @@ def parse_filters(args):
         if period not in PERIOD_LABELS:
             raise ValidationError("未知数据周期: %s" % period, fields={"period": "unknown"})
 
+    zone_ids, zone_none = _zone_filter_values(args)
     filters = {
         "station_ids": _int_list(args, "station_id"),
         "areas": _split(args.get("area")),
+        "zone_ids": zone_ids,
+        "zone_none": zone_none,
         "station_types": _split(args.get("station_type")),
         "pollutants": pollutants,
         "periods": periods,
@@ -105,12 +124,24 @@ def parse_filters(args):
     return filters
 
 
-def apply_filters(query, filters):
-    query = query.join(Station, Measurement.station_id == Station.id)
+def apply_filters(query, filters, station_joined=False, zone_joined=False):
+    if not station_joined:
+        query = query.join(Station, Measurement.station_id == Station.id)
     if filters["station_ids"]:
         query = query.filter(Measurement.station_id.in_(filters["station_ids"]))
     if filters["areas"]:
         query = query.filter(Station.area.in_(filters["areas"]))
+    if filters["zone_ids"] or filters["zone_none"]:
+        if not zone_joined:
+            query = query.outerjoin(Zone, Zone.id == Station.zone_id)
+        if filters["zone_ids"] and filters["zone_none"]:
+            query = query.filter(
+                or_(Station.zone_id.in_(filters["zone_ids"]), Station.zone_id.is_(None))
+            )
+        elif filters["zone_ids"]:
+            query = query.filter(Station.zone_id.in_(filters["zone_ids"]))
+        else:
+            query = query.filter(Station.zone_id.is_(None))
     if filters["station_types"]:
         query = query.filter(Station.station_type.in_(filters["station_types"]))
     if filters["pollutants"]:
@@ -159,7 +190,12 @@ def apply_sort(query, sort=None, order="desc"):
 
 def measurement_query(args):
     filters = parse_filters(args)
-    query = apply_filters(db.session.query(Measurement), filters)
+    query = apply_filters(
+        db.session.query(Measurement).options(
+            joinedload(Measurement.station).joinedload(Station.zone)
+        ),
+        filters,
+    )
     return apply_sort(query, args.get("sort"), args.get("order")), filters
 
 
@@ -219,24 +255,65 @@ def statistics(args):
     exceeded_expr = func.sum(cast(Measurement.is_exceeded, db.Integer)).label("exceeded_count")
 
     if group_by == "station":
-        query = db.session.query(
-            Station.id.label("station_id"),
-            Station.code.label("station_code"),
-            Station.name.label("station_name"),
-            Station.area.label("area"),
-            value_expr,
-            count_expr,
-            exceeded_expr,
-        ).group_by(Station.id, Station.code, Station.name, Station.area)
+        query = (
+            db.session.query(
+                Station.id.label("station_id"),
+                Station.code.label("station_code"),
+                Station.name.label("station_name"),
+                Station.area.label("area"),
+                Station.zone_id.label("zone_id"),
+                func.coalesce(Zone.name, "未划分片区").label("zone_name"),
+                value_expr,
+                count_expr,
+                exceeded_expr,
+            )
+            .select_from(Measurement)
+            .join(Station, Measurement.station_id == Station.id)
+            .outerjoin(Zone, Zone.id == Station.zone_id)
+            .group_by(
+                Station.id, Station.code, Station.name, Station.area,
+                Station.zone_id, Zone.name,
+            )
+        )
+        station_joined = True
+        zone_joined = True
+        is_time_group = False
+    elif group_by == "zone":
+        zone_label = func.coalesce(Zone.name, "未划分片区").label("zone_name")
+        query = (
+            db.session.query(
+                Station.zone_id.label("zone_id"),
+                zone_label,
+                value_expr,
+                count_expr,
+                exceeded_expr,
+                func.count(func.distinct(Station.id)).label("station_count"),
+            )
+            .select_from(Measurement)
+            .join(Station, Measurement.station_id == Station.id)
+            .outerjoin(Zone, Zone.id == Station.zone_id)
+            .group_by(Station.zone_id, Zone.name)
+        )
+        station_joined = True
+        zone_joined = True
         is_time_group = False
     elif group_by == "area":
-        query = db.session.query(
-            Station.area.label("area"), value_expr, count_expr, exceeded_expr
-        ).group_by(Station.area)
+        query = (
+            db.session.query(
+                Station.area.label("area"), value_expr, count_expr, exceeded_expr
+            )
+            .select_from(Measurement)
+            .join(Station, Measurement.station_id == Station.id)
+            .group_by(Station.area)
+        )
+        station_joined = True
+        zone_joined = False
         is_time_group = False
     elif group_by == "day":
         bucket = func.date(Measurement.measured_at).label("bucket")
         query = db.session.query(bucket, value_expr, count_expr, exceeded_expr).group_by(bucket)
+        station_joined = False
+        zone_joined = False
         is_time_group = True
     elif group_by == "month":
         year = func.extract("year", Measurement.measured_at).label("year")
@@ -244,6 +321,8 @@ def statistics(args):
         query = db.session.query(year, month, value_expr, count_expr, exceeded_expr).group_by(
             year, month
         )
+        station_joined = False
+        zone_joined = False
         is_time_group = True
     else:
         column = {
@@ -254,9 +333,13 @@ def statistics(args):
         query = db.session.query(
             column.label("bucket"), value_expr, count_expr, exceeded_expr
         ).group_by(column)
+        station_joined = False
+        zone_joined = False
         is_time_group = False
 
-    query = apply_filters(query, filters)
+    query = apply_filters(
+        query, filters, station_joined=station_joined, zone_joined=zone_joined
+    )
     rows = query.all()
 
     items = []
@@ -268,6 +351,9 @@ def statistics(args):
         if group_by == "station":
             key = data.get("station_code")
             label = "%s %s" % (data.get("station_code"), data.get("station_name"))
+        elif group_by == "zone":
+            key = str(data.get("zone_id") or "none")
+            label = data.get("zone_name") or "未划分片区"
         elif group_by == "area":
             key = label = data.get("area")
         elif group_by == "day":
@@ -287,16 +373,21 @@ def statistics(args):
             key = data.get("bucket")
             label = DATA_SOURCE_LABELS.get(key, key)
 
-        items.append(
-            {
-                "key": key,
-                "label": label,
-                "value": round(float(raw_value), 2) if raw_value is not None else None,
-                "count": count,
-                "exceeded_count": exceeded,
-                "exceed_rate": round(exceeded / count, 4) if count else 0.0,
-            }
-        )
+        item = {
+            "key": key,
+            "label": label,
+            "value": round(float(raw_value), 2) if raw_value is not None else None,
+            "count": count,
+            "exceeded_count": exceeded,
+            "exceed_rate": round(exceeded / count, 4) if count else 0.0,
+        }
+        if group_by == "zone":
+            item["zone_id"] = data.get("zone_id")
+            item["station_count"] = int(data.get("station_count") or 0)
+        if group_by == "station":
+            item["zone_id"] = data.get("zone_id")
+            item["zone_name"] = data.get("zone_name")
+        items.append(item)
 
     if is_time_group:
         items.sort(key=lambda item: item["key"])

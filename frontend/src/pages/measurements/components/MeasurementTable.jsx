@@ -16,6 +16,17 @@ export default function MeasurementTable({ rows, loading, onDelete }) {
         </div>
       )
     },
+    {
+      key: 'zone',
+      title: '所属片区',
+      className: 'cell-nowrap',
+      render: (row) =>
+        row.station?.zone_name ? (
+          <span className="strong">{row.station.zone_name}</span>
+        ) : (
+          <span className="muted">未划分</span>
+        )
+    },
     { key: 'pollutant_label', title: '监测因子', className: 'cell-nowrap' },
     { key: 'period_label', title: '周期', className: 'cell-nowrap' },
     {

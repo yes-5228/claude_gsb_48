@@ -11,6 +11,9 @@ class Station(TimestampMixin, db.Model):
     code = db.Column(db.String(32), unique=True, nullable=False, index=True)
     name = db.Column(db.String(120), nullable=False)
     area = db.Column(db.String(64), nullable=False)
+    zone_id = db.Column(
+        db.Integer, db.ForeignKey("zones.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     address = db.Column(db.String(200))
     station_type = db.Column(db.String(32), nullable=False, default="ambient")
     status = db.Column(db.String(32), nullable=False, default="active", index=True)
@@ -31,6 +34,7 @@ class Station(TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    zone = db.relationship("Zone", back_populates="stations", foreign_keys=[zone_id])
 
     def to_dict(self, include_stats=False, stats=None):
         payload = {
@@ -38,6 +42,9 @@ class Station(TimestampMixin, db.Model):
             "code": self.code,
             "name": self.name,
             "area": self.area,
+            "zone_id": self.zone_id,
+            "zone_name": self.zone.name if self.zone else None,
+            "zone_code": self.zone.code if self.zone else None,
             "address": self.address,
             "station_type": self.station_type,
             "station_type_label": label_of(STATION_TYPE_LABELS, self.station_type),
@@ -55,7 +62,14 @@ class Station(TimestampMixin, db.Model):
         return payload
 
     def to_option(self):
-        return {"id": self.id, "code": self.code, "name": self.name, "area": self.area}
+        return {
+            "id": self.id,
+            "code": self.code,
+            "name": self.name,
+            "area": self.area,
+            "zone_id": self.zone_id,
+            "zone_name": self.zone.name if self.zone else None,
+        }
 
     def __repr__(self):
         return "<Station %s %s>" % (self.code, self.name)

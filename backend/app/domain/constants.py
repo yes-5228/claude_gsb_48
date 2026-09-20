@@ -18,6 +18,24 @@ EXCEEDANCE_LEVEL_LABELS = {"light": "轻度超标", "moderate": "中度超标", 
 
 EXCEEDANCE_STATUS_LABELS = {"pending": "待标注", "confirmed": "已确认", "ignored": "已忽略"}
 
+ZONE_STATUS_LABELS = {"active": "启用", "inactive": "停用"}
+
+PERSON_STATUS_LABELS = {"active": "在岗", "inactive": "离岗"}
+
+ZONE_ROLE_LABELS = {"manager": "片区负责人", "supervisor": "分管领导", "engineer": "运维专员"}
+
+CHANGE_REASON_LABELS = {
+    "assign": "归属分配",
+    "transfer": "片区调整",
+    "unassign": "解除归属",
+}
+
+CHANGE_TYPE_LABELS = {
+    "person_added": "责任人加入",
+    "person_removed": "责任人移除",
+    "role_changed": "角色调整",
+}
+
 
 def as_options(label_map):
     return [{"value": key, "label": label} for key, label in label_map.items()]
@@ -31,6 +49,9 @@ def options_payload():
         "data_source": as_options(DATA_SOURCE_LABELS),
         "exceedance_level": as_options(EXCEEDANCE_LEVEL_LABELS),
         "exceedance_status": as_options(EXCEEDANCE_STATUS_LABELS),
+        "zone_status": as_options(ZONE_STATUS_LABELS),
+        "person_status": as_options(PERSON_STATUS_LABELS),
+        "zone_role": as_options(ZONE_ROLE_LABELS),
     }
 
 

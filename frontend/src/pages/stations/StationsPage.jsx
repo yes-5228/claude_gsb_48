@@ -1,26 +1,32 @@
 import { useCallback, useState } from 'react'
-import { createStation, deleteStation, listStations, updateStation } from '../../api/stations.js'
+import { assignStationsToZone, createStation, deleteStation, listStations, updateStation } from '../../api/stations.js'
 import ConfirmDialog from '../../components/common/ConfirmDialog.jsx'
 import Pagination from '../../components/common/Pagination.jsx'
 import { SectionCard } from '../../components/common/Card.jsx'
 import { Alert } from '../../components/common/Feedback.jsx'
+import Tag from '../../components/common/Tag.jsx'
 import { useToast } from '../../components/common/ToastProvider.jsx'
 import { useListQuery } from '../../hooks/useListQuery.js'
 import { resetOptionCache } from '../../hooks/useOptions.js'
+import { useUrlFilters } from '../../hooks/useUrlFilters.js'
+import BatchZoneAssignModal from './components/BatchZoneAssignModal.jsx'
 import StationDetailDrawer from './components/StationDetailDrawer.jsx'
 import StationFilters from './components/StationFilters.jsx'
 import StationFormModal from './components/StationFormModal.jsx'
 import StationTable from './components/StationTable.jsx'
 
-const INITIAL_FILTERS = { keyword: '', area: '', status: '', station_type: '' }
+const DEFAULT_FILTERS = { keyword: '', area: '', zone_id: '', status: '', station_type: '' }
 
 export default function StationsPage() {
   const toast = useToast()
-  const query = useListQuery(listStations, INITIAL_FILTERS)
+  const initialFilters = useUrlFilters(DEFAULT_FILTERS)
+  const query = useListQuery(listStations, initialFilters)
   const [formState, setFormState] = useState({ open: false, station: null })
   const [detailId, setDetailId] = useState(null)
   const [pendingDelete, setPendingDelete] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState([])
+  const [batchOpen, setBatchOpen] = useState(false)
 
   const { reload } = query
   const areas = query.data?.areas ?? []
@@ -59,34 +65,75 @@ export default function StationsPage() {
     }
   }, [pendingDelete, reload, toast])
 
+  const toggleRow = useCallback((id) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]))
+  }, [])
+
+  const toggleAll = useCallback((ids) => {
+    setSelectedIds((prev) =>
+      ids.every((id) => prev.includes(id)) ? prev.filter((id) => !ids.includes(id)) : Array.from(new Set([...prev, ...ids]))
+    )
+  }, [])
+
+  const handleBatchAssign = useCallback(
+    async (payload) => {
+      const result = await assignStationsToZone(payload)
+      toast.success(
+        `批量归属完成: ${result.changed} 个点位已调整` +
+          (result.unchanged ? `, ${result.unchanged} 个本就属于该片区` : '') +
+          (result.missing?.length ? `, ${result.missing.length} 个未找到` : '')
+      )
+      setBatchOpen(false)
+      setSelectedIds([])
+      resetOptionCache()
+      reload()
+    },
+    [reload, toast]
+  )
+
   return (
     <>
       <StationFilters
         value={query.filters}
         areas={areas}
+        zones={query.data?.zones ?? []}
         loading={query.loading}
         onSubmit={(next) => query.setFilters(next)}
-        onReset={() => query.setFilters(INITIAL_FILTERS)}
+        onReset={() => query.setFilters(DEFAULT_FILTERS)}
       />
 
       {query.error ? <Alert tone="error">{query.error.message}</Alert> : null}
 
       <SectionCard
         title="监测点清单"
-        hint="台账信息用于数据录入与超标记录的归属追溯"
+        hint="台账信息用于数据录入与超标记录的归属追溯; 勾选多个点位可批量归属片区"
         actions={
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setFormState({ open: true, station: null })}
-          >
-            + 新增监测点
-          </button>
+          <>
+            {selectedIds.length ? <Tag tone="primary">已选 {selectedIds.length} 个</Tag> : null}
+            <button
+              type="button"
+              className="btn"
+              disabled={selectedIds.length === 0}
+              onClick={() => setBatchOpen(true)}
+            >
+              批量归属片区
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setFormState({ open: true, station: null })}
+            >
+              + 新增监测点
+            </button>
+          </>
         }
       >
         <StationTable
           rows={query.items}
           loading={query.loading}
+          selectedIds={selectedIds}
+          onToggleRow={toggleRow}
+          onToggleAll={toggleAll}
           onDetail={(row) => setDetailId(row.id)}
           onEdit={(row) => setFormState({ open: true, station: row })}
           onDelete={(row) => setPendingDelete(row)}
@@ -100,6 +147,13 @@ export default function StationsPage() {
           onPageSizeChange={query.setPageSize}
         />
       </SectionCard>
+
+      <BatchZoneAssignModal
+        open={batchOpen}
+        stationIds={selectedIds}
+        onClose={() => setBatchOpen(false)}
+        onSubmit={handleBatchAssign}
+      />
 
       <StationFormModal
         open={formState.open}

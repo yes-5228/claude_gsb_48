@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { batchAnnotate, listExceedances } from '../../api/exceedances.js'
 import Pagination from '../../components/common/Pagination.jsx'
 import { SectionCard } from '../../components/common/Card.jsx'
@@ -6,16 +7,19 @@ import { Alert } from '../../components/common/Feedback.jsx'
 import Tag from '../../components/common/Tag.jsx'
 import { useToast } from '../../components/common/ToastProvider.jsx'
 import { useListQuery } from '../../hooks/useListQuery.js'
+import { useUrlFilters } from '../../hooks/useUrlFilters.js'
 import AnnotationModal from './components/AnnotationModal.jsx'
 import ExceedanceFilters from './components/ExceedanceFilters.jsx'
 import ExceedanceSummaryCards from './components/ExceedanceSummaryCards.jsx'
 import ExceedanceTable from './components/ExceedanceTable.jsx'
 
-const INITIAL_FILTERS = {
+const DEFAULT_FILTERS = {
   status: '',
   level: '',
   pollutant: '',
   station_id: '',
+  zone_id: '',
+  manager_id: '',
   date_from: '',
   date_to: '',
   keyword: ''
@@ -23,7 +27,8 @@ const INITIAL_FILTERS = {
 
 export default function ExceedancesPage() {
   const toast = useToast()
-  const query = useListQuery(listExceedances, INITIAL_FILTERS)
+  const initialFilters = useUrlFilters(DEFAULT_FILTERS)
+  const query = useListQuery(listExceedances, initialFilters)
   const [selected, setSelected] = useState([])
   const [activeId, setActiveId] = useState(null)
   const [batch, setBatch] = useState({ status: 'confirmed', note: '', annotator: '' })
@@ -71,6 +76,48 @@ export default function ExceedancesPage() {
     <>
       <ExceedanceSummaryCards summary={query.summary} />
 
+      {query.summary?.top_zones?.length ? (
+        <SectionCard title="片区超标待办排名" hint="按当前筛选条件统计, 点击可下钻到该片区的待办超标记录">
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>排名</th>
+                  <th>片区</th>
+                  <th className="text-right">超标总数</th>
+                  <th className="text-right">待标注</th>
+                  <th>下钻</th>
+                </tr>
+              </thead>
+              <tbody>
+                {query.summary.top_zones.map((item, index) => (
+                  <tr key={item.zone_id ?? 'none'}>
+                    <td className="strong">{index + 1}</td>
+                    <td className="strong">{item.zone_name}</td>
+                    <td className="text-right">{item.count}</td>
+                    <td className="text-right">
+                      {item.pending_count ? (
+                        <Tag tone="warning">{item.pending_count} 条待办</Tag>
+                      ) : (
+                        <span className="muted">0</span>
+                      )}
+                    </td>
+                    <td>
+                      <Link
+                        className="btn btn-sm"
+                        to={`/exceedances?status=pending&zone_id=${item.zone_id ?? 'none'}`}
+                      >
+                        查看待办
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      ) : null}
+
       <ExceedanceFilters
         value={query.filters}
         loading={query.loading}
@@ -80,7 +127,7 @@ export default function ExceedancesPage() {
         }}
         onReset={() => {
           setSelected([])
-          query.setFilters(INITIAL_FILTERS)
+          query.setFilters(DEFAULT_FILTERS)
         }}
       />
 

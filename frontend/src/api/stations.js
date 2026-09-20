@@ -7,3 +7,4 @@ export const updateStation = (id, payload) => http.put(`/stations/${id}`, payloa
 export const deleteStation = (id) => http.delete(`/stations/${id}`)
 export const stationOptions = () => http.get('/stations/options')
 export const stationSummary = () => http.get('/stations/summary')
+export const assignStationsToZone = (payload) => http.post('/zones/assign-stations', payload)

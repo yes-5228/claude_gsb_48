@@ -23,6 +23,32 @@ export default function ExceedanceTable({
         </div>
       )
     },
+    {
+      key: 'zone',
+      title: '所属片区',
+      className: 'cell-nowrap',
+      render: (row) =>
+        row.zone_name ? <span className="strong">{row.zone_name}</span> : <span className="muted">未划分</span>
+    },
+    {
+      key: 'managers',
+      title: '责任人',
+      render: (row) => {
+        const managers = row.managers || []
+        if (!managers.length) return <span className="muted">-</span>
+        return (
+          <div className="small" style={{ maxWidth: 150 }}>
+            {managers.slice(0, 2).map((person) => (
+              <div key={person.id}>
+                {person.name}
+                <span className="muted"> · {person.role_label}</span>
+              </div>
+            ))}
+            {managers.length > 2 ? <span className="muted">等 {managers.length} 人</span> : null}
+          </div>
+        )
+      }
+    },
     { key: 'pollutant_label', title: '因子', className: 'cell-nowrap' },
     { key: 'period_label', title: '周期', className: 'cell-nowrap' },
     {

@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import Modal from '../../../components/common/Modal.jsx'
 import { Checkbox, Field, Input, Select, Textarea } from '../../../components/common/FormField.jsx'
 import { Alert } from '../../../components/common/Feedback.jsx'
+import { useZoneOptions } from '../../../hooks/useOptions.js'
 
 const EMPTY = {
   code: '',
   name: '',
   area: '',
+  zone_id: '',
   address: '',
   station_type: 'ambient',
   status: 'active',
@@ -36,6 +38,7 @@ function toForm(station) {
     code: station.code ?? '',
     name: station.name ?? '',
     area: station.area ?? '',
+    zone_id: station.zone_id ?? '',
     address: station.address ?? '',
     station_type: station.station_type ?? 'ambient',
     status: station.status ?? 'active',
@@ -52,6 +55,7 @@ export default function StationFormModal({ open, station, areas = [], onClose, o
   const [message, setMessage] = useState(null)
   const [busy, setBusy] = useState(false)
   const [autoCode, setAutoCode] = useState(true)
+  const { data: zoneData } = useZoneOptions()
 
   useEffect(() => {
     if (!open) return
@@ -80,6 +84,7 @@ export default function StationFormModal({ open, station, areas = [], onClose, o
     try {
       await onSubmit({
         ...form,
+        zone_id: form.zone_id === '' ? null : Number(form.zone_id),
         longitude: form.longitude === '' ? null : Number(form.longitude),
         latitude: form.latitude === '' ? null : Number(form.latitude),
         installed_at: form.installed_at || null
@@ -117,6 +122,17 @@ export default function StationFormModal({ open, station, areas = [], onClose, o
           </Field>
           <Field label="监测点名称" required error={errors.name}>
             <Input value={form.name} onChange={set('name')} invalid={Boolean(errors.name)} placeholder="如: 市民中心站" />
+          </Field>
+          <Field label="所属片区" error={errors.zone_id} hint="归属调整会自动记录历史">
+            <Select
+              value={form.zone_id === null ? '' : String(form.zone_id || '')}
+              onChange={set('zone_id')}
+              placeholder="暂不划分片区"
+              options={(zoneData?.items ?? []).map((zone) => ({
+                value: String(zone.id),
+                label: zone.name
+              }))}
+            />
           </Field>
           <Field label="所属区域" required error={errors.area}>
             <Input

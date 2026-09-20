@@ -106,6 +106,7 @@ a { color: var(--primary); text-decoration: none; }
 .text-right { text-align: right; }
 .strong { font-weight: 600; }
 .danger-text { color: var(--danger); }
+.warning-text { color: var(--warning); }
 .success-text { color: var(--success); }
 
 /* ---------- buttons ---------- */
@@ -289,3 +290,24 @@ ul.plain li { margin-bottom: 5px; }
   .form-grid { grid-template-columns: 1fr; }
   .form-grid .span-2 { grid-column: span 1; }
 }
+
+/* ---- 页签(片区管理) ---- */
+.tabs { display: inline-flex; gap: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px; }
+.tab {
+  border: none; background: transparent; padding: 8px 18px; border-radius: 8px;
+  font-size: 14px; color: var(--text-muted); cursor: pointer;
+}
+.tab:hover { color: var(--primary); background: var(--primary-soft); }
+.tab.active { background: var(--primary); color: #fff; font-weight: 600; }
+
+/* ---- 片区责任人小标签 ---- */
+.tag + .tag { margin-left: 0; }
+
+/* ---- 归属/任职变更时间线 ---- */
+.timeline { list-style: none; margin: 0; padding: 0 0 0 18px; border-left: 2px solid var(--border); }
+.timeline li { position: relative; padding: 0 0 14px 14px; }
+.timeline li::before {
+  content: ""; position: absolute; left: -23px; top: 4px;
+  width: 8px; height: 8px; border-radius: 50%; background: var(--primary);
+}
+.timeline .timeline-meta { font-size: 12px; color: var(--text-muted); }

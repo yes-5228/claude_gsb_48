@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FilterPanel } from '../../../components/common/Card.jsx'
 import { Field, Input, Select } from '../../../components/common/FormField.jsx'
+import { useZoneOptions } from '../../../hooks/useOptions.js'
 
 const STATUS_OPTIONS = [
   { value: 'active', label: '运行中' },
@@ -16,8 +17,12 @@ const TYPE_OPTIONS = [
   { value: 'rural', label: '农村站点' }
 ]
 
-export default function StationFilters({ value, areas = [], loading, onSubmit, onReset }) {
+const UNASSIGNED = 'none'
+
+export default function StationFilters({ value, areas = [], zones = [], loading, onSubmit, onReset }) {
   const [draft, setDraft] = useState(value)
+  const { data: zoneData } = useZoneOptions()
+  const zoneItems = zones.length ? zones : zoneData?.items ?? []
 
   useEffect(() => {
     setDraft(value)
@@ -30,7 +35,7 @@ export default function StationFilters({ value, areas = [], loading, onSubmit, o
       loading={loading}
       onSearch={() => onSubmit(draft)}
       onReset={() => {
-        setDraft({ keyword: '', area: '', status: '', station_type: '' })
+        setDraft({ keyword: '', area: '', zone_id: '', status: '', station_type: '' })
         onReset()
       }}
     >
@@ -42,7 +47,18 @@ export default function StationFilters({ value, areas = [], loading, onSubmit, o
           onKeyDown={(event) => event.key === 'Enter' && onSubmit(draft)}
         />
       </Field>
-      <Field label="所属区域">
+      <Field label="所属片区">
+        <Select
+          value={draft.zone_id || ''}
+          onChange={update('zone_id')}
+          placeholder="全部片区"
+          options={[
+            { value: UNASSIGNED, label: '未划分片区' },
+            ...zoneItems.map((zone) => ({ value: String(zone.id), label: zone.name }))
+          ]}
+        />
+      </Field>
+      <Field label="行政区域">
         <Select
           value={draft.area || ''}
           onChange={update('area')}

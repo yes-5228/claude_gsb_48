@@ -2,6 +2,7 @@
 from datetime import datetime
 
 from sqlalchemy import cast, func, or_
+from sqlalchemy.orm import joinedload
 
 from ..domain.constants import EXCEEDANCE_LEVEL_LABELS, EXCEEDANCE_STATUS_LABELS
 from ..errors import NotFoundError, ValidationError
@@ -41,6 +42,22 @@ def _date_arg(args, name, end_of_day=False):
     return datetime.combine(parsed, time.max if end_of_day else time.min)
 
 
+def _zone_filter_values(args):
+    raw = _split(args.get("zone_id"))
+    only_none = "none" in raw
+    ids = []
+    for item in raw:
+        if item == "none":
+            continue
+        try:
+            ids.append(int(item))
+        except ValueError:
+            raise ValidationError(
+                "zone_id 参数必须为整数或 none", fields={"zone_id": "invalid"}
+            )
+    return ids, only_none
+
+
 def get_exceedance(exceedance_id):
     exceedance = db.session.get(Exceedance, exceedance_id)
     if exceedance is None:
@@ -49,7 +66,11 @@ def get_exceedance(exceedance_id):
 
 
 def exceedance_query(args):
-    query = db.session.query(Exceedance).join(Station, Exceedance.station_id == Station.id)
+    query = (
+        db.session.query(Exceedance)
+        .options(joinedload(Exceedance.station).joinedload(Station.zone))
+        .join(Station, Exceedance.station_id == Station.id)
+    )
 
     statuses = _split(args.get("status"))
     if statuses:
@@ -66,6 +87,28 @@ def exceedance_query(args):
     areas = _split(args.get("area"))
     if areas:
         query = query.filter(Station.area.in_(areas))
+    zone_ids, zone_none = _zone_filter_values(args)
+    if zone_ids or zone_none:
+        if zone_ids and zone_none:
+            query = query.filter(
+                or_(Station.zone_id.in_(zone_ids), Station.zone_id.is_(None))
+            )
+        elif zone_ids:
+            query = query.filter(Station.zone_id.in_(zone_ids))
+        else:
+            query = query.filter(Station.zone_id.is_(None))
+    manager_ids = _int_list(args, "manager_id")
+    if manager_ids:
+        from ..models import ZoneManager
+
+        managed_zone_ids = [
+            row[0]
+            for row in db.session.query(ZoneManager.zone_id)
+            .filter(ZoneManager.person_id.in_(manager_ids))
+            .distinct()
+            .all()
+        ]
+        query = query.filter(Station.zone_id.in_(managed_zone_ids))
     keyword = (args.get("keyword") or "").strip()
     if keyword:
         like = "%" + keyword + "%"
@@ -234,6 +277,10 @@ def summary(args):
         )
     ]
 
+    from . import zone_service
+
+    top_zones = zone_service.top_zones(subquery, limit=5)
+
     totals = db.session.query(
         func.count(subquery.c.id),
         func.max(subquery.c.exceed_ratio),
@@ -247,6 +294,7 @@ def summary(args):
         "by_level": list(by_level.values()),
         "top_pollutants": top_pollutants,
         "top_stations": top_stations,
+        "top_zones": top_zones,
         "max_ratio": round(float(totals[1] or 0), 3),
         "avg_ratio": round(float(totals[2] or 0), 3),
         "generated_at": iso(datetime.now()),

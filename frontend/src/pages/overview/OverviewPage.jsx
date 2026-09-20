@@ -19,11 +19,26 @@ export default function OverviewPage() {
   if (error && !data) return <ErrorState error={error} onRetry={reload} />
   if (!data) return null
 
-  const { stations, measurements, exceedances, trend, pending_exceedances: pending } = data
+  const { stations, measurements, exceedances, trend, pending_exceedances: pending, zone_ranking: zoneRanking } = data
 
   const pendingColumns = [
     { key: 'measured_at', title: '监测时间', className: 'cell-nowrap', render: (row) => formatDateTime(row.measured_at) },
     { key: 'station_name', title: '监测点', render: (row) => row.station_name },
+    {
+      key: 'zone_name',
+      title: '所属片区',
+      render: (row) => row.zone_name || <span className="muted">未划分</span>
+    },
+    {
+      key: 'managers',
+      title: '责任人',
+      render: (row) =>
+        (row.managers || []).length ? (
+          (row.managers || []).map((person) => person.name).join('、')
+        ) : (
+          <span className="muted">-</span>
+        )
+    },
     { key: 'pollutant_label', title: '因子' },
     {
       key: 'value',
@@ -51,9 +66,7 @@ export default function OverviewPage() {
         <StatCard
           label="监测点总数"
           value={stations.total}
-          foot={(stations.by_status || [])
-            .map((item) => `${item.label} ${item.count}`)
-            .join(' · ')}
+          foot={`${stations.active_zone_count || 0} 个启用片区 · ${stations.unzoned_station_count || 0} 个点位待划分`}
         />
         <StatCard
           label="监测数据总量"
@@ -107,6 +120,60 @@ export default function OverviewPage() {
           </div>
         </SectionCard>
       </div>
+
+      <SectionCard
+        title="片区超标待办排名"
+        hint="按片区汇总超标记录, 点击可下钻到该片区的待办列表"
+        actions={
+          <Link className="btn btn-sm" to="/zones">
+            管理片区与责任人
+          </Link>
+        }
+      >
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>排名</th>
+                <th>片区</th>
+                <th className="text-right">超标总数</th>
+                <th className="text-right">待标注</th>
+                <th>下钻</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(zoneRanking || []).length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="muted">暂无超标记录</td>
+                </tr>
+              ) : (
+                zoneRanking.map((item, index) => (
+                  <tr key={item.zone_id ?? 'none'}>
+                    <td className="strong">{index + 1}</td>
+                    <td className="strong">{item.zone_name}</td>
+                    <td className="text-right">{item.count}</td>
+                    <td className="text-right">
+                      {item.pending_count ? (
+                        <span className="warning-text strong">{item.pending_count}</span>
+                      ) : (
+                        <span className="muted">0</span>
+                      )}
+                    </td>
+                    <td>
+                      <Link
+                        className="btn btn-sm btn-primary"
+                        to={`/exceedances?status=pending&zone_id=${item.zone_id ?? 'none'}`}
+                      >
+                        处理待办
+                      </Link>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
 
       <SectionCard
         title="待标注超标记录 (最近 5 条)"

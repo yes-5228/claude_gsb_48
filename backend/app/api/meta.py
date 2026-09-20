@@ -8,13 +8,16 @@ from ..domain.constants import (
     EXCEEDANCE_LEVEL_LABELS,
     EXCEEDANCE_STATUS_LABELS,
     PERIOD_LABELS,
+    PERSON_STATUS_LABELS,
     STATION_STATUS_LABELS,
     STATION_TYPE_LABELS,
+    ZONE_ROLE_LABELS,
+    ZONE_STATUS_LABELS,
     options_payload,
 )
 from ..domain.standards import POLLUTANTS
 from ..extensions import db
-from ..services import exceedance_service, query_service, station_service
+from ..services import exceedance_service, query_service, station_service, zone_service
 
 bp = Blueprint("meta", __name__)
 
@@ -49,6 +52,8 @@ def options():
     payload = options_payload()
     payload["stations"] = station_service.option_list()
     payload["areas"] = station_service.area_list()
+    payload["zones"] = zone_service.zone_option_list(include_inactive=True)
+    payload["persons"] = zone_service.person_option_list()
     return payload
 
 
@@ -70,11 +75,23 @@ def overview():
         .limit(5)
         .all()
     )
+    pending_managers = zone_service.station_manager_map(
+        [record.station_id for record in pending_records]
+    )
+    pending_items = []
+    for record in pending_records:
+        item = record.to_dict()
+        item["managers"] = pending_managers.get(record.station_id, [])
+        pending_items.append(item)
+
+    # 片区维度的待办超标排名(供首页下钻入口)
+    zone_ranking = exceedance_service.summary({}).get("top_zones", [])
     return {
         "stations": station_service.metadata_summary(),
         "measurements": query_service.summary(filters),
         "exceedances": exceedance_service.summary({}),
-        "pending_exceedances": [record.to_dict() for record in pending_records],
+        "pending_exceedances": pending_items,
+        "zone_ranking": zone_ranking,
         "trend": trend,
         "labels": {
             "station_status": STATION_STATUS_LABELS,
@@ -82,6 +99,9 @@ def overview():
             "exceedance_status": EXCEEDANCE_STATUS_LABELS,
             "exceedance_level": EXCEEDANCE_LEVEL_LABELS,
             "data_source": DATA_SOURCE_LABELS,
+            "zone_status": ZONE_STATUS_LABELS,
+            "person_status": PERSON_STATUS_LABELS,
+            "zone_role": ZONE_ROLE_LABELS,
         },
         "generated_at": datetime.now().isoformat(timespec="seconds"),
     }

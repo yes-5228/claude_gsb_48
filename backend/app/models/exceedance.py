@@ -61,6 +61,8 @@ class Exceedance(TimestampMixin, db.Model):
             "updated_at": iso(self.updated_at),
             "station_name": self.station.name if self.station else None,
             "station_code": self.station.code if self.station else None,
+            "zone_id": self.station.zone_id if self.station else None,
+            "zone_name": self.station.zone.name if self.station and self.station.zone else None,
             "unit": self.measurement.unit if self.measurement else None,
         }
         if include_relations and self.measurement:

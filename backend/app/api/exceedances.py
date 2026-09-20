@@ -2,7 +2,7 @@
 from flask import Blueprint, current_app, request
 
 from ..domain.constants import EXCEEDANCE_LEVEL_LABELS, EXCEEDANCE_STATUS_LABELS, PERIOD_LABELS
-from ..services import exceedance_service
+from ..services import exceedance_service, zone_service
 from ..utils.pagination import paginate_query
 from ..utils.validation import Validator
 from .helpers import json_payload, list_payload
@@ -12,10 +12,16 @@ bp = Blueprint("exceedances", __name__)
 
 @bp.get("/", strict_slashes=False)
 def list_exceedances():
-    """超标记录列表: 支持状态/等级/因子/站点/时间过滤, 并附带筛选后的统计."""
+    """超标记录列表: 支持状态/等级/因子/站点/片区/时间过滤, 并附带筛选后的统计."""
     query = exceedance_service.exceedance_query(request.args)
     result = paginate_query(query, lambda row: row.to_dict())
+    manager_map = zone_service.station_manager_map(
+        [item["station_id"] for item in result["items"]]
+    )
+    for item in result["items"]:
+        item["managers"] = manager_map.get(item["station_id"], [])
     result["summary"] = exceedance_service.summary(request.args)
+    result["zones"] = zone_service.zone_option_list(include_inactive=True)
     return result
 
 
@@ -36,6 +42,8 @@ def exceedance_options():
             for key, label in EXCEEDANCE_STATUS_LABELS.items()
         ],
         "periods": [{"value": key, "label": label} for key, label in PERIOD_LABELS.items()],
+        "zones": zone_service.zone_option_list(include_inactive=True),
+        "persons": zone_service.person_option_list(),
     }
 
 
@@ -46,9 +54,22 @@ def export_exceedances():
     rows = exceedance_service.exceedance_query(request.args).limit(
         current_app.config["MAX_EXPORT_ROWS"]
     ).all()
+    station_map = {row.station_id: row.station for row in rows}
+    manager_text = zone_service.manager_text_for_stations(list(station_map.values()))
     columns = [
         ("站点编码", lambda row: row.station.code if row.station else ""),
         ("站点名称", lambda row: row.station.name if row.station else ""),
+        (
+            "所属片区",
+            lambda row: row.station.zone.name
+            if row.station and row.station.zone
+            else "未划分片区",
+        ),
+        (
+            "片区责任人",
+            lambda row: manager_text.get(row.station_id, ""),
+        ),
+        ("行政区域", lambda row: row.station.area if row.station else ""),
         ("监测因子", "pollutant"),
         ("监测值", "value"),
         ("限值", "limit_value"),

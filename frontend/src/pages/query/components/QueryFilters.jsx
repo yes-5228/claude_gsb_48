@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FilterPanel } from '../../../components/common/Card.jsx'
 import { Field, Input, Select } from '../../../components/common/FormField.jsx'
-import { usePollutantMeta, useStationOptions } from '../../../hooks/useOptions.js'
+import { usePollutantMeta, useStationOptions, useZoneOptions } from '../../../hooks/useOptions.js'
 
 const PERIODS = [
   { value: 'hourly', label: '小时均值' },
@@ -25,10 +25,17 @@ const SOURCE_OPTIONS = [
   { value: 'import', label: '历史导入' }
 ]
 
+const EMPTY_DRAFT = {
+  keyword: '', station_id: '', zone_id: '', area: '', pollutant: '', period: '',
+  is_exceeded: '', exceedance_status: '', data_source: '',
+  date_from: '', date_to: '', min_value: '', max_value: ''
+}
+
 export default function QueryFilters({ value, loading, onSubmit, onReset }) {
   const [draft, setDraft] = useState(value)
   const { data: stationData } = useStationOptions()
   const { data: pollutantData } = usePollutantMeta()
+  const { data: zoneData } = useZoneOptions()
 
   useEffect(() => {
     setDraft(value)
@@ -41,11 +48,7 @@ export default function QueryFilters({ value, loading, onSubmit, onReset }) {
       loading={loading}
       onSearch={() => onSubmit(draft)}
       onReset={() => {
-        setDraft({
-          keyword: '', station_id: '', area: '', pollutant: '', period: '',
-          is_exceeded: '', exceedance_status: '', data_source: '',
-          date_from: '', date_to: '', min_value: '', max_value: ''
-        })
+        setDraft(EMPTY_DRAFT)
         onReset()
       }}
     >
@@ -57,6 +60,17 @@ export default function QueryFilters({ value, loading, onSubmit, onReset }) {
           onKeyDown={(event) => event.key === 'Enter' && onSubmit(draft)}
         />
       </Field>
+      <Field label="所属片区">
+        <Select
+          value={draft.zone_id || ''}
+          onChange={update('zone_id')}
+          placeholder="全部片区"
+          options={[
+            { value: 'none', label: '未划分片区' },
+            ...((zoneData?.items ?? []).map((zone) => ({ value: String(zone.id), label: zone.name })))
+          ]}
+        />
+      </Field>
       <Field label="监测点">
         <Select
           value={draft.station_id || ''}
@@ -65,7 +79,7 @@ export default function QueryFilters({ value, loading, onSubmit, onReset }) {
           options={(stationData?.items ?? []).map((item) => ({ value: String(item.id), label: `${item.code} ${item.name}` }))}
         />
       </Field>
-      <Field label="所属区域">
+      <Field label="行政区域">
         <Select
           value={draft.area || ''}
           onChange={update('area')}

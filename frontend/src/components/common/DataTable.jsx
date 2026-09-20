@@ -21,7 +21,8 @@ export default function DataTable({
 }) {
   if (loading && rows.length === 0) return <Loading />
 
-  const keys = rows.map((row) => row[rowKey])
+  const getRowKey = typeof rowKey === 'function' ? rowKey : (row) => row[rowKey]
+  const keys = rows.map((row) => getRowKey(row))
   const allSelected = selectable && keys.length > 0 && keys.every((key) => selectedIds.includes(key))
 
   return (
@@ -50,7 +51,7 @@ export default function DataTable({
           </thead>
           <tbody>
             {rows.map((row) => {
-              const key = row[rowKey]
+              const key = getRowKey(row)
               const selected = selectedIds.includes(key)
               return (
                 <tr

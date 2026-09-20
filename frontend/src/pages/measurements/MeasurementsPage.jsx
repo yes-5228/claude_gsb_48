@@ -19,6 +19,7 @@ import MeasurementTable from './components/MeasurementTable.jsx'
 
 const INITIAL_FILTERS = {
   station_id: '',
+  zone_id: '',
   pollutant: '',
   period: '',
   is_exceeded: '',

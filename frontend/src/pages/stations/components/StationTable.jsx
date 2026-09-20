@@ -3,7 +3,16 @@ import Tag from '../../../components/common/Tag.jsx'
 import { STATION_STATUS_TONE } from '../../../constants/index.js'
 import { formatDate, formatNumber } from '../../../utils/format.js'
 
-export default function StationTable({ rows, loading, onDetail, onEdit, onDelete }) {
+export default function StationTable({
+  rows,
+  loading,
+  selectedIds = [],
+  onToggleRow,
+  onToggleAll,
+  onDetail,
+  onEdit,
+  onDelete
+}) {
   const columns = [
     { key: 'code', title: '监测点编码', className: 'mono cell-nowrap' },
     {
@@ -16,7 +25,33 @@ export default function StationTable({ rows, loading, onDetail, onEdit, onDelete
         </div>
       )
     },
-    { key: 'area', title: '所属区域', className: 'cell-nowrap' },
+    {
+      key: 'zone',
+      title: '所属片区',
+      className: 'cell-nowrap',
+      render: (row) =>
+        row.zone_name ? <span className="strong">{row.zone_name}</span> : <span className="muted">未划分</span>
+    },
+    { key: 'area', title: '行政区域', className: 'cell-nowrap' },
+    {
+      key: 'managers',
+      title: '片区责任人',
+      render: (row) => {
+        const managers = row.managers || []
+        if (!managers.length) return <span className="muted">-</span>
+        return (
+          <div className="small">
+            {managers.slice(0, 2).map((person) => (
+              <div key={person.id}>
+                {person.name}
+                <span className="muted"> · {person.role_label}</span>
+              </div>
+            ))}
+            {managers.length > 2 ? <span className="muted">等 {managers.length} 人</span> : null}
+          </div>
+        )
+      }
+    },
     { key: 'station_type_label', title: '类型', className: 'cell-nowrap' },
     {
       key: 'status',
@@ -82,6 +117,11 @@ export default function StationTable({ rows, loading, onDetail, onEdit, onDelete
       columns={columns}
       rows={rows}
       loading={loading}
+      selectable
+      selectedIds={selectedIds}
+      onToggleRow={onToggleRow}
+      onToggleAll={onToggleAll}
+      onRowClick={onDetail}
       emptyText="没有匹配的监测点, 可调整筛选条件或新增监测点"
       emptyIcon="📍"
     />

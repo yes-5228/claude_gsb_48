@@ -3,7 +3,42 @@ import random
 from datetime import date, datetime, timedelta
 
 from .extensions import db
-from .models import Exceedance, Measurement, Station
+from .models import Exceedance, Measurement, ResponsiblePerson, Station, Zone
+
+# (片区编码, 片区名称, 说明, [(责任人姓名, 工号, 角色, 电话, 部门)])
+DEMO_ZONES = [
+    (
+        "ZN-CENTER", "中心城区片区", "覆盖福田、罗湖核心城区监测点",
+        [
+            ("张伟", "EMP1001", "manager", "13800001001", "监测中心运维一部"),
+            ("李娜", "EMP1002", "supervisor", "13800001002", "市生态环境局"),
+        ],
+    ),
+    (
+        "ZN-WEST", "西部沿海片区", "覆盖南山、宝安沿海区域",
+        [
+            ("王强", "EMP1003", "manager", "13800001003", "监测中心运维二部"),
+            ("陈晨", "EMP1004", "engineer", "13800001004", "监测中心运维二部"),
+        ],
+    ),
+    (
+        "ZN-EAST", "东部产业片区", "覆盖龙岗、大鹏等产业与生态区域",
+        [
+            ("刘洋", "EMP1005", "manager", "13800001005", "监测中心运维三部"),
+        ],
+    ),
+]
+
+# 站点编码 -> (片区编码); 未列出的站点默认不划分片区, 便于演示“未划分”筛选
+STATION_ZONE_MAP = {
+    "SZ-AQ-001": "ZN-CENTER",
+    "SZ-AQ-003": "ZN-CENTER",
+    "SZ-AQ-006": "ZN-CENTER",
+    "SZ-AQ-002": "ZN-WEST",
+    "SZ-AQ-008": "ZN-WEST",
+    "SZ-AQ-005": "ZN-EAST",
+    "SZ-AQ-007": "ZN-EAST",
+}
 
 DEMO_STATIONS = [
     {
@@ -77,7 +112,7 @@ def _value(pollutant, period, station_type, rng):
 
 def seed_demo_data(days=5, rng=None, recorder_pool=RECORDERS):
     """Generate demo stations and monitoring records through the normal service path."""
-    from .services import measurement_service
+    from .services import measurement_service, zone_service
 
     rng = rng or random.Random(20260914)
     created_stations = []
@@ -86,6 +121,50 @@ def seed_demo_data(days=5, rng=None, recorder_pool=RECORDERS):
         db.session.add(station)
         created_stations.append(station)
     db.session.commit()
+
+    # 建立片区、责任人与任职关系
+    created_zones = {}
+    for code, name, description, persons in DEMO_ZONES:
+        zone = Zone(code=code, name=name, description=description, status="active")
+        db.session.add(zone)
+        db.session.commit()
+        created_zones[code] = zone
+        for person_name, employee_no, role, phone, department in persons:
+            person = ResponsiblePerson(
+                name=person_name,
+                employee_no=employee_no,
+                phone=phone,
+                department=department,
+                title="片区责任人" if role == "manager" else "分管领导"
+                if role == "supervisor" else "运维专员",
+                status="active",
+            )
+            db.session.add(person)
+            db.session.commit()
+            zone_service.add_zone_manager(
+                zone, person.id, role, operator="系统初始化", note="片区建立时分配"
+            )
+
+    # 点位归属片区(走服务层以写入归属历史)
+    zone_by_code = {zone.code: zone for zone in created_zones.values()}
+    for station in created_stations:
+        zone_code = STATION_ZONE_MAP.get(station.code)
+        if zone_code:
+            zone_service.assign_station_zone(
+                station, zone_by_code[zone_code].id,
+                operator="系统初始化", note="片区台账初始化分配",
+            )
+    # 模拟一次历史调整: 宝安中心站最初归属中心城区, 后调整到西部沿海
+    baoan = next((item for item in created_stations if item.code == "SZ-AQ-004"), None)
+    if baoan is not None:
+        center = created_zones.get("ZN-CENTER")
+        west = created_zones.get("ZN-WEST")
+        zone_service.assign_station_zone(
+            baoan, center.id, operator="系统初始化", note="建点时临时挂靠中心城区"
+        )
+        zone_service.assign_station_zone(
+            baoan, west.id, operator="李娜", note="按行政片区重新划分, 调整至西部沿海片区"
+        )
 
     today = date.today()
     totals = {"stations": len(created_stations), "measurements": 0, "exceedances": 0}
@@ -160,8 +239,10 @@ def ensure_bootstrap(app):
         return
     with app.app_context():
         try:
+            from .migrations import ensure_schema
+
             if auto_init:
-                db.create_all()
+                ensure_schema()
             if auto_seed and db.session.query(Station.id).first() is None:
                 app.logger.info("seeding demo data ...")
                 seed_demo_data()

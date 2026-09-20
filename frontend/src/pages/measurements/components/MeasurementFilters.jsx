@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FilterPanel } from '../../../components/common/Card.jsx'
 import { Field, Input, Select } from '../../../components/common/FormField.jsx'
-import { usePollutantMeta, useStationOptions } from '../../../hooks/useOptions.js'
+import { usePollutantMeta, useStationOptions, useZoneOptions } from '../../../hooks/useOptions.js'
 
 const PERIODS = [
   { value: 'hourly', label: '小时均值' },
@@ -17,6 +17,7 @@ export default function MeasurementFilters({ value, loading, onSubmit, onReset }
   const [draft, setDraft] = useState(value)
   const { data: stationData } = useStationOptions()
   const { data: pollutantData } = usePollutantMeta()
+  const { data: zoneData } = useZoneOptions()
 
   useEffect(() => {
     setDraft(value)
@@ -29,10 +30,21 @@ export default function MeasurementFilters({ value, loading, onSubmit, onReset }
       loading={loading}
       onSearch={() => onSubmit(draft)}
       onReset={() => {
-        setDraft({ station_id: '', pollutant: '', period: '', is_exceeded: '', date_from: '', date_to: '' })
+        setDraft({ station_id: '', zone_id: '', pollutant: '', period: '', is_exceeded: '', date_from: '', date_to: '' })
         onReset()
       }}
     >
+      <Field label="所属片区">
+        <Select
+          value={draft.zone_id || ''}
+          onChange={update('zone_id')}
+          placeholder="全部片区"
+          options={[
+            { value: 'none', label: '未划分片区' },
+            ...((zoneData?.items ?? []).map((zone) => ({ value: String(zone.id), label: zone.name })))
+          ]}
+        />
+      </Field>
       <Field label="监测点">
         <Select
           value={draft.station_id || ''}

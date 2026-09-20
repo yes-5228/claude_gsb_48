@@ -1,10 +1,11 @@
 import { useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { getStation } from '../../../api/stations.js'
 import Modal from '../../../components/common/Modal.jsx'
 import Tag from '../../../components/common/Tag.jsx'
 import DataTable from '../../../components/common/DataTable.jsx'
 import { ErrorState, Loading } from '../../../components/common/Feedback.jsx'
-import { STATION_STATUS_TONE } from '../../../constants/index.js'
+import { ROLE_TONE, STATION_STATUS_TONE } from '../../../constants/index.js'
 import { useAsyncData } from '../../../hooks/useAsyncData.js'
 import { formatDate, formatDateTime, formatNumber } from '../../../utils/format.js'
 
@@ -54,7 +55,30 @@ export default function StationDetailDrawer({ stationId, onClose, onEdit }) {
           <dl className="kv">
             <dt>监测点编码</dt>
             <dd className="mono">{data.code}</dd>
-            <dt>所属区域</dt>
+            <dt>所属片区</dt>
+            <dd>
+              {data.zone_name ? (
+                <Link to={`/zones`}>{data.zone_name}</Link>
+              ) : (
+                <span className="muted">未划分片区</span>
+              )}
+            </dd>
+            <dt>片区责任人</dt>
+            <dd>
+              {(data.managers || []).length ? (
+                <span className="inline" style={{ flexWrap: 'wrap', gap: 6 }}>
+                  {data.managers.map((person) => (
+                    <Tag key={person.id} tone={ROLE_TONE[person.role] || 'neutral'}>
+                      {person.name} · {person.role_label}
+                      {person.phone ? ` ${person.phone}` : ''}
+                    </Tag>
+                  ))}
+                </span>
+              ) : (
+                <span className="muted">-</span>
+              )}
+            </dd>
+            <dt>行政区域</dt>
             <dd>{data.area}</dd>
             <dt>详细地址</dt>
             <dd>{data.address || '-'}</dd>
@@ -93,6 +117,39 @@ export default function StationDetailDrawer({ stationId, onClose, onEdit }) {
               <span className="hint">限值参考 GB 3095-2012 二级标准</span>
             </div>
             <DataTable columns={columns} rows={stats.pollutants || []} emptyText="该监测点暂无监测数据" />
+          </div>
+
+          <div className="card">
+            <div className="card-header">
+              <h3>片区归属历史</h3>
+              <span className="hint">人员或归属变动均保留记录, 不可修改</span>
+            </div>
+            <div className="card-body">
+              {(data.zone_history || []).length ? (
+                <ul className="timeline">
+                  {data.zone_history.map((item) => (
+                    <li key={item.id}>
+                      <div>
+                        <Tag tone={item.reason === 'transfer' ? 'warning' : 'info'}>
+                          {item.reason_label}
+                        </Tag>{' '}
+                        <span className="strong">
+                          {item.previous_zone_name ? `${item.previous_zone_name} → ` : ''}
+                          {item.zone_name || '未划分片区'}
+                        </span>
+                      </div>
+                      <div className="timeline-meta">
+                        {formatDateTime(item.changed_at)}
+                        {item.operator ? ` · 操作人 ${item.operator}` : ''}
+                        {item.note ? ` · ${item.note}` : ''}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="muted small">暂无归属变更记录</span>
+              )}
+            </div>
           </div>
         </div>
       ) : null}
